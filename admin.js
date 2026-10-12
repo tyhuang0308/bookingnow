@@ -29,8 +29,8 @@ function render() {
   if (S.user === undefined) { root.innerHTML = '<p class="hint">載入中…</p>'; return; }
   if (!S.user) {
     root.innerHTML = `<div class="panel login">
-      <h2>老師登入</h2>
-      <p class="hint">使用你的 Google 帳號登入。只有被加入「老師帳號」名單的帳號可以進入後台。</p>
+      <h2>研究人員登入</h2>
+      <p class="hint">使用你的 Google 帳號登入。只有被加入「研究人員帳號」名單的帳號可以進入後台。</p>
       <div><button type="button" class="btn ghost" data-act="login">${GLOGO}使用 Google 帳號登入</button></div>
       <p class="err" id="a-err" role="alert">${esc(S.loadErr)}</p></div>`;
     return;
@@ -40,13 +40,13 @@ function render() {
     root.innerHTML = `<div class="panel login">
       <h2>這個帳號還不能使用後台</h2>
       <p>你目前登入的是 <b class="mono">${esc(S.user.email)}</b>。</p>
-      <p class="hint">請已經能登入後台的老師，到「老師帳號」把這個 Email 加進去，再重新整理這一頁。如果你有其他 Google 帳號，也可以登出後改用那個帳號。</p>
+      <p class="hint">請已經能登入後台的研究人員，到「研究人員帳號」把這個 Email 加進去，再重新整理這一頁。如果你有其他 Google 帳號，也可以登出後改用那個帳號。</p>
       <div><button type="button" class="btn ghost" data-act="logout">登出，換一個帳號</button></div></div>`;
     return;
   }
   if (!S.data) { root.innerHTML = S.loadErr ? `<div class="notice"><p>無法載入資料：${esc(S.loadErr)}</p></div>` : '<p class="hint">載入資料中…</p>'; return; }
   const tab = (v, label) => `<button type="button" role="tab" data-act="atab" data-v="${v}" aria-selected="${S.atab === v}">${label}</button>`;
-  root.innerHTML = `<div class="tabs" role="tablist">${tab('staff', '人員與時段')}${tab('bookings', '預約紀錄')}${tab('accounts', '老師帳號')}</div>
+  root.innerHTML = `<div class="tabs" role="tablist">${tab('staff', '研究人員與時段')}${tab('bookings', '預約紀錄')}${tab('accounts', '研究人員帳號')}</div>
     <div class="tabgap"></div>
     <div id="a-staff" class="admin-grid" ${S.atab === 'staff' ? '' : 'hidden'}><aside class="panel" id="a-list"></aside><section class="panel" id="a-editor"></section></div>
     <div id="a-bookings" class="panel" ${S.atab === 'bookings' ? '' : 'hidden'}></div>
@@ -239,26 +239,25 @@ function exportCSV() {
   U.toast('已匯出 ' + list.length + ' 筆（最近兩週起的紀錄）');
 }
 
-/* ---------- 老師帳號 ---------- */
+/* ---------- 研究人員帳號 ---------- */
 function renderAccounts() {
   const el = $('a-accounts'); if (!el) return;
   const list = (S.data.admins || []).slice().sort(), me = S.user.email;
   el.innerHTML = `<div class="settings">
-    <h2 class="panel-title">老師帳號</h2>
-    <p class="hint">加入老師的 Google 帳號 Email（通常是 Gmail），他就能用自己的帳號登入這個後台。所有老師的權限都相同，可以修改全部的人員、時段與預約。</p>
+    <h2 class="panel-title">研究人員帳號</h2>
+    <p class="hint">加入研究人員的Google帳號，他就能用自己的帳號登入這個後台。所有研究人員的權限都相同，可以修改全部的研究人員、時段與預約</p>
     <div class="accts">${list.length ? list.map(em => {
       const k = 'acct:' + em;
       return `<div class="acct"><span class="em">${esc(em)}</span>${em === me ? '<span class="pill ok">你</span>' : ''}
         ${S.confirm === k
           ? `<span class="confirm">${em === me ? '移除後你就不能再進入後台。' : ''}確定移除？<button type="button" class="btn danger small" data-act="acct-del" data-v="${esc(em)}">移除</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
           : `<button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">移除</button>`}</div>`;
-    }).join('') : '<p class="hint">還沒有加入其他老師。</p>'}</div>
+    }).join('') : '<p class="hint">還沒有加入其他研究人員</p>'}</div>
     <form id="acct-form" class="addrow" novalidate>
-      <label class="field"><span>新增老師的 Google 帳號</span><input type="email" id="acct-new" placeholder="例如：teacher@gmail.com" autocomplete="off"></label>
+      <label class="field"><span>新增研究人員的Google帳號</span><input type="email" id="acct-new" placeholder="researcher@gmail.com" autocomplete="off"></label>
       <button type="submit" class="btn primary" id="acct-add">加入</button>
     </form>
     <p class="err" id="acct-err" role="alert"></p>
-    <p class="hint">網站擁有者的帳號寫在資料庫安全規則裡，一定可以登入，不需要加在這裡。</p>
   </div>`;
 }
 async function saveAdmins(list, okMsg) {
@@ -351,7 +350,7 @@ document.addEventListener('submit', async e => {
   if (id === 'ed-form') saveStaff();
   if (id === 'acct-form') {
     const v = $('acct-new').value.trim().toLowerCase();
-    if (!/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(v)) { $('acct-err').textContent = '請輸入完整的 Email，例如 teacher@gmail.com。'; return; }
+    if (!/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(v)) { $('acct-err').textContent = '請輸入完整的 Email，例如 researcher@gmail.com'; return; }
     if ((S.data.admins || []).includes(v)) { $('acct-err').textContent = '這個帳號已經在名單裡了。'; return; }
     $('acct-add').disabled = true;
     await saveAdmins((S.data.admins || []).concat(v), '已加入 ' + v);

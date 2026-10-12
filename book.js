@@ -102,7 +102,7 @@ function renderForm() {
       <label class="field"><span>聯絡電話<b class="req" aria-hidden="true">*</b></span><input type="tel" id="c-phone" data-cf="phone" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="0912345678" required value="${esc(S.form.phone)}"></label>
     </div>
     <label class="field"><span>Email<b class="req" aria-hidden="true">*</b></span><input type="email" id="c-email" data-cf="email" autocomplete="email" maxlength="100" placeholder="name@gmail.com" required value="${esc(S.form.email)}"></label>
-    <p class="hint">標示 <b class="req">*</b> 為必填</p>
+    <p class="hint"><b class="req">*</b> 為必填</p>
     <p class="err" id="c-err" role="alert"></p>
     <div><button type="submit" class="btn primary" id="c-submit">確認預約</button></div>
   </form>`;
@@ -122,9 +122,9 @@ async function submitBooking() {
   const f = { name: S.form.name.trim(), phone: mobile(S.form.phone), email: S.form.email.trim().toLowerCase(), note: '' };
   if (!f.name) { err.textContent = '請填寫孩子姓名。'; $('c-name').focus(); return; }
   if (!S.form.phone.trim()) { err.textContent = '請填寫聯絡電話。'; $('c-phone').focus(); return; }
-  if (!f.phone) { err.textContent = '聯絡電話格式錯誤，請輸入 09 開頭的 10 碼手機號碼，例如 0912345678。'; $('c-phone').focus(); return; }
+  if (!f.phone) { err.textContent = '聯絡電話格式錯誤，請輸入09開頭的10碼手機號碼，例如0912345678'; $('c-phone').focus(); return; }
   if (!f.email) { err.textContent = '請填寫 Email。'; $('c-email').focus(); return; }
-  if (!EMAIL_RE.test(f.email)) { err.textContent = 'Email 格式錯誤，請輸入 Gmail 或 Yahoo 信箱，例如 name@gmail.com、name@yahoo.com.tw。'; $('c-email').focus(); return; }
+  if (!EMAIL_RE.test(f.email)) { err.textContent = 'Email格式錯誤，請輸入Gmail或Yahoo信箱，例如name@gmail.com、name@yahoo.com.tw'; $('c-email').focus(); return; }
   const sl = st && avail(st, S.sel.date).find(x => x.start === S.sel.start);
   if (!sl || !sl.ok) { err.textContent = '這個時段剛被預約走了，請選擇其他時段。'; renderTimes(); return; }
   err.textContent = ''; btn.disabled = true; btn.textContent = '送出中…'; S.busy = true;

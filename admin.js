@@ -65,7 +65,7 @@ function onData() {
   if (S.atab === 'accounts') renderAccounts();
 }
 
-/* ---------- 人員與時段 ---------- */
+/* ---------- 研究人員與時段 ---------- */
 function staffMeta(s) {
   const days = ORDER.filter(d => (s.weekly && s.weekly[d] || []).length).map(d => WD[d]).join('');
   return `${num(s.duration, 60)} 分 · ${days ? '週' + days : '尚未設定時段'}`;
@@ -98,8 +98,8 @@ function renderEditor() {
   el.innerHTML = `<form id="ed-form" class="editor" novalidate>
     <h2>${editing ? '編輯 ' + esc(d.name || '研究人員') : '新增研究人員'}</h2>
     <div class="g2">
-      <label class="field"><span>姓名</span><input type="text" id="f-name" maxlength="40" value="${esc(d.name)}" placeholder="例如：黃老師"></label>
-      <label class="field"><span>職稱／說明</span><input type="text" id="f-role" maxlength="60" value="${esc(d.role)}" placeholder="例如：職能治療個別課"></label>
+      <label class="field"><span>姓名</span><input type="text" id="f-name" maxlength="40" value="${esc(d.name)}"></label>
+      <label class="field"><span>職稱／說明</span><input type="text" id="f-role" maxlength="60" value="${esc(d.role)}"></label>
     </div>
     <fieldset class="field"><legend>代表色</legend><div class="swatches">${COLORS.map((c, i) => `<label><input type="radio" name="f-color" id="f-color-${i}" value="${c}" ${c === d.color ? 'checked' : ''} aria-label="顏色 ${i + 1}"><span style="background:${c}"></span></label>`).join('')}</div></fieldset>
     <div>
@@ -111,7 +111,7 @@ function renderEditor() {
       </div>
       <div class="quick" style="margin-top:8px">常用時長：${[30, 40, 45, 50, 60, 90].map(v => `<button type="button" class="chip" data-act="ed-dur" data-v="${v}" aria-pressed="${d.duration === v}">${v}</button>`).join('')}</div>
     </div>
-    <label class="switch"><input type="checkbox" id="f-active" ${d.active ? 'checked' : ''}> 開放家長預約這位人員</label>
+    <label class="switch"><input type="checkbox" id="f-active" ${d.active ? 'checked' : ''}> 開放家長預約這位研究人員</label>
     <section><h3>每週開放時段</h3><div class="week">${ORDER.map(day => {
       const rs = d.weekly[day] || [], on = rs.length > 0;
       return `<div class="wrow ${on ? '' : 'off'}"><label class="wday"><input type="checkbox" class="day-on" id="f-day-${day}" data-day="${day}" ${on ? 'checked' : ''}>週${WD[day]}</label><div class="ranges">${on ? rs.map((r, i) => `<div class="range"><input type="time" id="f-r-${day}-${i}-s" data-day="${day}" data-k="s" step="300" value="${esc(r.s)}" aria-label="週${WD[day]}第 ${i + 1} 段開始"><span>–</span><input type="time" id="f-r-${day}-${i}-e" data-day="${day}" data-k="e" step="300" value="${esc(r.e)}" aria-label="週${WD[day]}第 ${i + 1} 段結束"><button type="button" class="icon" data-act="ed-del-range" data-day="${day}" data-i="${i}" aria-label="刪除這段">×</button></div>`).join('') + `<button type="button" class="linkbtn" data-act="ed-add-range" data-day="${day}">＋ 加一段</button>` : '<span class="hint">不開放</span>'}</div></div>`;
@@ -173,10 +173,10 @@ function updatePreview() {
 async function saveStaff() {
   readEditor(); const d = S.draft, err = $('ed-err');
   const name = d.name.trim();
-  if (!name) { err.textContent = '請填寫人員姓名。'; $('f-name').focus(); return; }
+  if (!name) { err.textContent = '請填寫研究人員姓名。'; $('f-name').focus(); return; }
   const probs = problems(d).filter(p => !p.includes('排不進'));
   if (probs.length) { err.textContent = probs[0]; return; }
-  if (!(d.advanceDays >= 1 && d.advanceDays <= 90)) { err.textContent = '開放預約天數請填 1 到 90 天。'; return; }
+  if (!(d.advanceDays >= 1 && d.advanceDays <= 90)) { err.textContent = '開放預約天數請填1到90天。'; return; }
   const id = S.editingId || U.rid();
   const ex = aStaff().find(s => s.id === id);
   const weekly = {};

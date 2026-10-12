@@ -206,7 +206,7 @@ function demoStore() {
     const wk = () => [{ s: '09:00', e: '12:00' }, { s: '14:00', e: '17:00' }];
     const d = {
       v: 2,
-      settings: { title: '兒童職能治療預約（範例）', intro: '選擇老師、日期與時段即可預約。每次課程請提早 5 分鐘到。', contact: '電話：06-000-0000（範例）' },
+      settings: { title: '成大兒童敘事研究預約系統', intro: '選擇研究人員、日期與時段即可預約', contact: '' },
       admins: ['teacher.chen@example.com'],
       staff: [
         { id: 'demolin', name: '林老師（範例）', role: '職能治療個別課', color: COLORS[0], duration: 50, buffer: 10, advanceDays: 21, notice: 12, active: true, order: 1, weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [{ s: '09:00', e: '12:00' }], 0: [] }, closedDates: [] },
@@ -243,7 +243,7 @@ function demoStore() {
   S.subscribePublic = cb => { watch(() => cb(clone({ settings: db.settings, staff: db.staff, slots: slots(), got: { settings: true, staff: true, slots: true } }))); };
   S.book = function (p) {
     const st = db.staff.find(s => s.id === p.staff.id && s.active);
-    if (!st) return Promise.reject(new Error('找不到這位服務人員。'));
+    if (!st) return Promise.reject(new Error('找不到這位研究人員。'));
     const sl = U.available(st, p.date, slots()).find(x => x.start === p.start);
     if (!sl || !sl.ok) return Promise.reject(new Error('這個時段剛被預約走了，請選擇其他時段。'));
     const b = { id: U.rid(), code: U.genCode(), staffId: st.id, staffName: st.name, date: p.date, start: sl.start, end: sl.end, name: p.name, phone: p.phone, email: p.email, note: p.note, status: 'booked', slotKey: U.slotKey(st.id, p.date, sl.start) };

@@ -19,7 +19,7 @@ function renderTop() {
     nav.innerHTML = `<button type="button" class="btn ghost small" data-act="logout">登出</button>`;
   } else nav.innerHTML = '';
   const s = S.data && S.data.settings;
-  $('biz-sub').textContent = s && s.title ? '「' + s.title + '」的人員、時段與預約紀錄' : '管理服務人員、可預約時段與預約紀錄';
+  $('biz-sub').textContent = s && s.title ? '「' + s.title + '」的人員、時段與預約紀錄' : '管理研究人員、可預約時段與預約紀錄';
   const b = $('banner');
   if (U.isDemo) { b.hidden = false; b.innerHTML = '<b>預覽模式</b>：還沒填入 Firebase 設定，按「使用 Google 帳號登入」會直接以範例帳號進入。資料只存在這個瀏覽器，可以和 <a href="./">家長預約頁</a> 互相看到。'; }
   else b.hidden = true;
@@ -77,7 +77,7 @@ function staffMeta(s) {
 }
 function renderStaffList() {
   const el = $('a-list'); if (!el) return;
-  el.innerHTML = `<button type="button" class="btn primary" style="width:100%" data-act="ed-new">＋ 新增服務人員</button>
+  el.innerHTML = `<button type="button" class="btn primary" style="width:100%" data-act="ed-new">＋ 新增研究人員</button>
   <div class="slist">${aStaff().map(s => `<button type="button" class="sitem" data-act="ed-open" data-id="${esc(s.id)}" aria-current="${s.id === S.editingId}">
     <span class="dot" style="background:${color(s.color)}"></span><span class="nm">${esc(s.name)}${s.active === false ? '<span class="tag">暫停</span>' : ''}</span><span class="mt">${esc(staffMeta(s))}</span></button>`).join('') || '<p class="hint" style="padding:8px 4px">還沒有人員。</p>'}</div>`;
 }
@@ -95,16 +95,16 @@ function renderEditor() {
   if (!d) {
     el.innerHTML = aStaff().length
       ? '<div class="empty"><h2>選擇一位人員</h2><p>從左側清單點選人員，就能修改他每週開放的時段、每段時長和休假日。</p></div>'
-      : '<div class="empty"><h2>新增第一位服務人員</h2><p>每位人員都有自己的每週可預約時段、每段時長與休假日。家長會先選人，再看到這位人員的空檔。</p><button type="button" class="btn primary" data-act="ed-new">＋ 新增服務人員</button></div>';
+      : '<div class="empty"><h2>新增第一位研究人員</h2><p>每位人員都有自己的每週可預約時段、每段時長與休假日。家長會先選人，再看到這位人員的空檔。</p><button type="button" class="btn primary" data-act="ed-new">＋ 新增研究人員</button></div>';
     return;
   }
   const editing = !!S.editingId, t = today();
   const fut = editing ? (S.data.bookings || []).filter(b => b.staffId === S.editingId && b.status === 'booked' && b.date >= t).length : 0;
   el.innerHTML = `<form id="ed-form" class="editor" novalidate>
-    <h2>${editing ? '編輯 ' + esc(d.name || '服務人員') : '新增服務人員'}</h2>
+    <h2>${editing ? '編輯 ' + esc(d.name || '研究人員') : '新增研究人員'}</h2>
     <div class="g2">
       <label class="field"><span>姓名</span><input type="text" id="f-name" maxlength="40" value="${esc(d.name)}" placeholder="例如：黃老師"></label>
-      <label class="field"><span>服務項目／職稱</span><input type="text" id="f-role" maxlength="60" value="${esc(d.role)}" placeholder="例如：職能治療個別課"></label>
+      <label class="field"><span>職稱／說明</span><input type="text" id="f-role" maxlength="60" value="${esc(d.role)}" placeholder="例如：職能治療個別課"></label>
     </div>
     <fieldset class="field"><legend>代表色</legend><div class="swatches">${COLORS.map((c, i) => `<label><input type="radio" name="f-color" id="f-color-${i}" value="${c}" ${c === d.color ? 'checked' : ''} aria-label="顏色 ${i + 1}"><span style="background:${c}"></span></label>`).join('')}</div></fieldset>
     <div>
@@ -234,7 +234,7 @@ function renderBookings() {
 function exportCSV() {
   const list = (S.data.bookings || []).slice().sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const head = ['日期', '開始', '結束', '服務人員', '姓名', '電話', 'Email', '備註', '狀態', '預約代碼'];
+  const head = ['日期', '開始', '結束', '研究人員', '孩子姓名', '電話', 'Email', '備註', '狀態', '預約代碼'];
   const lines = [head.map(q).join(',')].concat(list.map(b => [b.date, fmt(b.start), fmt(b.end), b.staffName, b.name, b.phone, b.email, b.note, b.status === 'booked' ? '已預約' : '已取消', b.code].map(q).join(',')));
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
@@ -278,7 +278,7 @@ function renderSettings() {
     <h2 class="panel-title">家長預約頁顯示的內容</h2>
     <label class="field"><span>頁面名稱</span><input type="text" id="s-title" maxlength="60" value="${esc(s.title || '')}" placeholder="例如：兒童職能治療預約"></label>
     <label class="field"><span>簡介（顯示在預約頁最上方）</span><textarea id="s-intro" maxlength="500" placeholder="例如：每次課程請提早 5 分鐘到。">${esc(s.intro || '')}</textarea></label>
-    <label class="field"><span>聯絡方式</span><textarea id="s-contact" maxlength="300" placeholder="例如：電話 06-123-4567、LINE ID：xxxx">${esc(s.contact || '')}</textarea></label>
+    <label class="field"><span>聯絡提示（顯示在家長頁「填寫聯絡資料」下方；留空則顯示「若有任何疑問，歡迎至Line官方帳號詢問，謝謝！」）</span><textarea id="s-contact" maxlength="300" placeholder="若有任何疑問，歡迎至Line官方帳號詢問，謝謝！">${esc(s.contact || '')}</textarea></label>
     <p class="err" id="s-err" role="alert"></p>
     <div><button type="submit" class="btn primary" id="s-save">儲存設定</button></div>
   </form>`;

@@ -14,12 +14,12 @@ const GLOGO = '<svg class="gmark" viewBox="0 0 48 48" aria-hidden="true"><path f
 function renderTop() {
   const nav = $('topnav');
   if (S.user && S.isAdmin) {
-    nav.innerHTML = `<span class="me">${esc(S.user.email)}</span><a class="btn ghost small" href="./" target="_blank" rel="noopener">開啟家長預約頁</a><button type="button" class="btn ghost small" data-act="logout">登出</button>`;
+    nav.innerHTML = `<span class="me">${esc(S.user.email)}</span><a class="btn ghost small" href="./" target="_blank" rel="noopener">開啟家長預約頁面</a><button type="button" class="btn ghost small" data-act="logout">登出</button>`;
   } else if (S.user) {
     nav.innerHTML = `<button type="button" class="btn ghost small" data-act="logout">登出</button>`;
   } else nav.innerHTML = '';
   const b = $('banner');
-  if (U.isDemo) { b.hidden = false; b.innerHTML = '<b>預覽模式</b>：還沒填入 Firebase 設定，按「使用 Google 帳號登入」會直接以範例帳號進入。資料只存在這個瀏覽器，可以和 <a href="./">家長預約頁</a> 互相看到。'; }
+  if (U.isDemo) { b.hidden = false; b.innerHTML = '<b>預覽模式</b>：還沒填入Firebase設定，按「使用Google帳號登入」會直接以範例帳號進入。資料只存在這個瀏覽器，可以和 <a href="./">家長預約頁面</a> 互相看到'; }
   else b.hidden = true;
 }
 
@@ -30,7 +30,7 @@ function render() {
   if (!S.user) {
     root.innerHTML = `<div class="panel login">
       <h2>研究人員登入</h2>
-      <p class="hint">使用你的 Google 帳號登入。只有被加入「研究人員帳號」名單的帳號可以進入後台。</p>
+      <p class="hint">使用你的Google帳號登入。只有被加入「研究人員帳號」名單的帳號可以進入後台</p>
       <div><button type="button" class="btn ghost" data-act="login">${GLOGO}使用 Google 帳號登入</button></div>
       <p class="err" id="a-err" role="alert">${esc(S.loadErr)}</p></div>`;
     return;
@@ -40,7 +40,7 @@ function render() {
     root.innerHTML = `<div class="panel login">
       <h2>這個帳號還不能使用後台</h2>
       <p>你目前登入的是 <b class="mono">${esc(S.user.email)}</b>。</p>
-      <p class="hint">請已經能登入後台的研究人員，到「研究人員帳號」把這個 Email 加進去，再重新整理這一頁。如果你有其他 Google 帳號，也可以登出後改用那個帳號。</p>
+      <p class="hint">請已經能登入後台的研究人員，到「研究人員帳號」把這個Email加入，再重新整理這一頁面</p>
       <div><button type="button" class="btn ghost" data-act="logout">登出，換一個帳號</button></div></div>`;
     return;
   }
@@ -89,8 +89,8 @@ function renderEditor() {
   const el = $('a-editor'), d = S.draft; if (!el) return;
   if (!d) {
     el.innerHTML = aStaff().length
-      ? '<div class="empty"><h2>選擇一位人員</h2><p>從左側清單點選人員，就能修改他每週開放的時段、每段時長和休假日。</p></div>'
-      : '<div class="empty"><h2>新增第一位研究人員</h2><p>每位人員都有自己的每週可預約時段、每段時長與休假日。家長會先選人，再看到這位人員的空檔。</p><button type="button" class="btn primary" data-act="ed-new">＋ 新增研究人員</button></div>';
+      ? '<div class="empty"><h2>選擇一位研究人員</h2><p>從左側清單點選研究人員，就能修改其每週開放的時段、時長和休假日</p></div>'
+      : '<div class="empty"><h2>新增第一位研究人員</h2><p>每位研究人員都有自己的每週可預約時段、時長與休假日</p><button type="button" class="btn primary" data-act="ed-new">＋ 新增研究人員</button></div>';
     return;
   }
   const editing = !!S.editingId, t = today();
@@ -145,12 +145,12 @@ function readEditor() {
 }
 function problems(d) {
   const out = [];
-  if (!(d.duration >= 5 && d.duration <= 480)) out.push('每段時長請填 5 到 480 分鐘。');
+  if (!(d.duration >= 5 && d.duration <= 480)) out.push('每段時長請填5到480分鐘');
   for (const day of ORDER) (d.weekly[day] || []).forEach((r, i) => {
     const s = toMin(r.s), e = toMin(r.e);
-    if (isNaN(s) || isNaN(e)) out.push(`週${WD[day]}第 ${i + 1} 段的時間還沒填完整。`);
-    else if (e <= s) out.push(`週${WD[day]}第 ${i + 1} 段的結束時間要晚於開始時間。`);
-    else if (d.duration >= 5 && e - s < d.duration) out.push(`週${WD[day]}第 ${i + 1} 段（${r.s}–${r.e}）比一段時長還短，排不進任何時段。`);
+    if (isNaN(s) || isNaN(e)) out.push(`週${WD[day]}第${i + 1}段的時間還沒填完整`);
+    else if (e <= s) out.push(`週${WD[day]}第${i + 1}段的結束時間要晚於開始時間`);
+    else if (d.duration >= 5 && e - s < d.duration) out.push(`週${WD[day]}第${i + 1}段（${r.s}–${r.e}）比一段時長還短，排不進任何時段`);
   });
   return out;
 }
@@ -207,7 +207,7 @@ function renderBookings() {
   let html = `<div class="bk-head"><p class="stat">今天 <b>${todayN}</b> 筆 · 即將到來共 <b>${all.length}</b> 筆</p>
     <div class="topnav"><label class="field" style="flex-direction:row;align-items:center;gap:8px"><span>顯示</span><select id="a-filter"><option value="all">全部人員</option>${opts}</select></label>
     <button type="button" class="btn ghost small" data-act="export">匯出 CSV</button></div></div>`;
-  if (!rows.length) html += '<div class="empty"><p>目前沒有即將到來的預約。家長完成預約後會立刻出現在這裡，不需要重新整理。</p></div>';
+  if (!rows.length) html += '<div class="empty"><p>目前沒有即將到來的預約。家長完成預約後會立刻出現在這裡，不需要重新整理</p></div>';
   else {
     const groups = {}; rows.forEach(x => (groups[x.date] = groups[x.date] || []).push(x));
     for (const date of Object.keys(groups)) {
@@ -245,7 +245,7 @@ function renderAccounts() {
   const list = (S.data.admins || []).slice().sort(), me = S.user.email;
   el.innerHTML = `<div class="settings">
     <h2 class="panel-title">研究人員帳號</h2>
-    <p class="hint">加入研究人員的Google帳號，他就能用自己的帳號登入這個後台。所有研究人員的權限都相同，可以修改全部的研究人員、時段與預約</p>
+    <p class="hint">加入研究人員的Google帳號，即可用其帳號登入這個後台。所有研究人員的權限都相同，可以修改全部的研究人員、時段與預約</p>
     <div class="accts">${list.length ? list.map(em => {
       const k = 'acct:' + em;
       return `<div class="acct"><span class="em">${esc(em)}</span>${em === me ? '<span class="pill ok">你</span>' : ''}

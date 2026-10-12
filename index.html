@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>線上預約</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="seal" aria-hidden="true">約</div>
+      <div><h1 id="biz-title">線上預約</h1><p id="biz-sub" class="sub"></p></div>
+    </div>
+  </header>
+  <div id="banner" class="banner" hidden></div>
+
+  <div class="spread">
+    <section class="page left">
+      <div class="step"><h2><span class="num">1</span>選擇服務人員</h2><div id="b-staff" class="staff-cards"><p class="hint">正在載入可預約的時段…</p></div></div>
+      <div class="step"><h2><span class="num">2</span>選擇日期</h2><div id="b-dates"><p class="hint">先選擇服務人員。</p></div></div>
+    </section>
+    <section class="page right ruled">
+      <div class="step"><h2><span class="num">3</span>選擇時段</h2><div id="b-times"><p class="hint">選好人員與日期後，這裡會列出可預約的時段。</p></div></div>
+      <div class="step"><h2><span class="num">4</span>填寫聯絡資料</h2><div id="b-form"><p class="hint">選擇時段後填寫聯絡資料。</p></div></div>
+    </section>
+  </div>
+
+  <section class="box">
+    <h2>查詢或取消預約</h2>
+    <div id="b-device"></div>
+    <form id="lookup-form" class="lookup" novalidate>
+      <label class="field"><span>預約代碼（8 碼）</span><input type="text" id="l-code" class="mono" autocomplete="off" maxlength="8" style="text-transform:uppercase"></label>
+      <button type="submit" class="btn ghost" id="l-submit">查詢</button>
+    </form>
+    <p class="err" id="l-err" role="alert"></p>
+    <div id="b-lookup"></div>
+  </section>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script src="book.js"></script>
+</body>
+</html>

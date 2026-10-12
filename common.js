@@ -96,10 +96,9 @@ function firebaseStore(needAuth) {
   const S = {};
 
   S.subscribePublic = function (cb, onErr) {
-    const st = { settings: {}, staff: [], slots: [], got: {} };
+    const st = { staff: [], slots: [], got: {} };
     const emit = k => { st.got[k] = true; cb(st); };
     ready.then(() => {
-      F.db.doc('config/settings').onSnapshot(s => { st.settings = s.exists ? s.data() : {}; emit('settings'); }, onErr);
       F.db.collection('staff').onSnapshot(s => { st.staff = docs(s); emit('staff'); }, onErr);
       F.db.collection('slots').where('date', '>=', U.today()).onSnapshot(s => { st.slots = s.docs.map(d => d.data()); emit('slots'); }, onErr);
     }, onErr);
@@ -163,12 +162,11 @@ function firebaseStore(needAuth) {
     catch (e) { if (e.code === 'permission-denied') return false; throw e; }
   };
   S.subscribeAdmin = function (cb, onErr) {
-    const st = { settings: {}, staff: [], bookings: [], admins: [], got: {} };
+    const st = { staff: [], bookings: [], admins: [], got: {} };
     const unsubs = []; let dead = false;
     const emit = k => { st.got[k] = true; cb(st); };
     ready.then(() => {
       if (dead) return;
-      unsubs.push(F.db.doc('config/settings').onSnapshot(s => { st.settings = s.exists ? s.data() : {}; emit('settings'); }, onErr));
       unsubs.push(F.db.collection('staff').onSnapshot(s => { st.staff = docs(s); emit('staff'); }, onErr));
       unsubs.push(F.db.collection('bookings').where('date', '>=', U.addDays(U.today(), -14)).onSnapshot(s => { st.bookings = docs(s); emit('bookings'); }, onErr));
       unsubs.push(F.db.doc('config/admins').onSnapshot(s => { st.admins = (s.exists && s.data().emails) || []; emit('admins'); }, onErr));
@@ -177,7 +175,6 @@ function firebaseStore(needAuth) {
   };
   S.saveStaff = async (id, data) => { await ready; await F.db.doc('staff/' + id).set(data); };
   S.deleteStaff = async id => { await ready; await F.db.doc('staff/' + id).delete(); };
-  S.saveSettings = async data => { await ready; await F.db.doc('config/settings').set(data); };
   S.saveAdmins = async emails => { await ready; await F.db.doc('config/admins').set({ emails }); };
   S.cancelBooking = async function (b) {
     await ready;
@@ -195,7 +192,7 @@ function firebaseStore(needAuth) {
 
 /* ================= 預覽模式（範例資料，只存在這個瀏覽器） ================= */
 function demoStore() {
-  const KEY = 'booking-demo-v2';
+  const KEY = 'booking-demo-v3';
   const subs = new Set();
   let db = load(), user = null;
   const authSubs = new Set();
@@ -205,8 +202,7 @@ function demoStore() {
   function seed() {
     const wk = () => [{ s: '09:00', e: '12:00' }, { s: '14:00', e: '17:00' }];
     const d = {
-      v: 2,
-      settings: { title: '成大兒童敘事研究預約系統', intro: '選擇研究人員、日期與時段即可預約', contact: '' },
+      v: 3,
       admins: ['teacher.chen@example.com'],
       staff: [
         { id: 'demolin', name: '林老師（範例）', role: '職能治療個別課', color: COLORS[0], duration: 50, buffer: 10, advanceDays: 21, notice: 12, active: true, order: 1, weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [{ s: '09:00', e: '12:00' }], 0: [] }, closedDates: [] },
@@ -226,7 +222,7 @@ function demoStore() {
     return d;
   }
   function load() {
-    try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.v === 2) return v; } catch (e) { /* 無法使用瀏覽器儲存 */ }
+    try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.v === 3) return v; } catch (e) { /* 無法使用瀏覽器儲存 */ }
     const s = seed(); try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* 略過 */ }
     return s;
   }
@@ -240,7 +236,7 @@ function demoStore() {
   const watch = f => { subs.add(f); setTimeout(f, 0); return () => subs.delete(f); };
 
   const S = {};
-  S.subscribePublic = cb => { watch(() => cb(clone({ settings: db.settings, staff: db.staff, slots: slots(), got: { settings: true, staff: true, slots: true } }))); };
+  S.subscribePublic = cb => { watch(() => cb(clone({ staff: db.staff, slots: slots(), got: { staff: true, slots: true } }))); };
   S.book = function (p) {
     const st = db.staff.find(s => s.id === p.staff.id && s.active);
     if (!st) return Promise.reject(new Error('找不到這位研究人員。'));
@@ -264,10 +260,9 @@ function demoStore() {
   S.signIn = () => { user = { email: 'you@example.com' }; authSubs.forEach(f => f(user)); return later(); };
   S.signOut = () => { user = null; authSubs.forEach(f => f(null)); return later(); };
   S.checkAdmin = () => later(true);
-  S.subscribeAdmin = cb => watch(() => cb(clone({ settings: db.settings, staff: db.staff, bookings: db.bookings, admins: db.admins, got: { settings: true, staff: true, bookings: true, admins: true } })));
+  S.subscribeAdmin = cb => watch(() => cb(clone({ staff: db.staff, bookings: db.bookings, admins: db.admins, got: { staff: true, bookings: true, admins: true } })));
   S.saveStaff = (id, data) => { const i = db.staff.findIndex(s => s.id === id); const o = Object.assign({ id }, clone(data)); if (i >= 0) db.staff[i] = o; else db.staff.push(o); save(); return later(); };
   S.deleteStaff = id => { db.staff = db.staff.filter(s => s.id !== id); save(); return later(); };
-  S.saveSettings = data => { db.settings = clone(data); save(); return later(); };
   S.saveAdmins = emails => { db.admins = emails.slice(); save(); return later(); };
   S.cancelBooking = b => { const x = db.bookings.find(y => y.id === b.id); if (x) { x.status = 'cancelled'; x.cancelledBy = 'admin'; } save(); return later(); };
   return S;

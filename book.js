@@ -4,7 +4,7 @@
 const { $, esc, fmt, dLabel, today, color, num, WD, ORDER, addDays, parseD } = U;
 const store = U.createStore(false);
 const S = {
-  pub: { settings: {}, staff: [], slots: [] }, loaded: false, loadErr: '',
+  pub: { staff: [], slots: [] }, loaded: false, loadErr: '',
   sel: { staffId: null, date: null, start: null }, month: null, form: { name: '', phone: '', email: '', note: '' },
   done: null, busy: false, device: [], found: null, confirm: null
 };
@@ -17,21 +17,17 @@ const avail = (st, date) => U.available(st, date, S.pub.slots);
 function loadDevice() { try { S.device = (JSON.parse(localStorage.getItem('booking-mine') || '[]') || []).filter(b => b && b.code && b.date >= today()); } catch (e) { S.device = []; } }
 function saveDevice() { try { localStorage.setItem('booking-mine', JSON.stringify(S.device.slice(-10))); } catch (e) { /* 略過 */ } }
 
+const TITLE = '成大兒童敘事研究預約系統';
+const INTRO = '選擇研究人員、日期與時段即可預約';
+
 function renderHeader() {
-  const s = S.pub.settings || {};
-  $('biz-title').textContent = s.title || '成大兒童敘事研究預約系統';
-  if (!U.isDemo) document.title = s.title || '成大兒童敘事研究預約系統';
-  $('biz-sub').textContent = s.intro || '選擇研究人員、日期與時段即可預約';
+  $('biz-title').textContent = TITLE;
+  $('biz-sub').textContent = INTRO;
   const b = $('banner');
   if (U.isDemo) {
     b.hidden = false;
     b.innerHTML = '<b>預覽模式</b>：還沒填入 Firebase 設定，人員與預約都是範例，只存在這個瀏覽器。後台在另一個網址 <a href="admin.html">admin.html</a>（這行說明只在預覽模式出現，正式網站的家長頁沒有通往後台的連結）。';
   } else b.hidden = true;
-}
-
-function renderContact() {
-  const el = $('b-contact'); if (!el) return;
-  el.querySelector('p').textContent = (S.pub.settings || {}).contact || '若有任何疑問，歡迎至Line官方帳號詢問，謝謝！';
 }
 
 function renderStaffCards() {
@@ -48,7 +44,7 @@ function renderStaffCards() {
 
 function renderDates() {
   const el = $('b-dates'), st = selStaff();
-  if (!st) { el.innerHTML = '<p class="hint">先選擇研究人員。</p>'; return; }
+  if (!st) { el.innerHTML = '<p class="hint">先選擇研究人員</p>'; return; }
   const t = today(), adv = Math.min(90, Math.max(1, num(st.advanceDays, 30))), end = addDays(t, adv - 1);
   const minM = t.slice(0, 7), maxM = end.slice(0, 7);
   if (!S.month || S.month < minM) S.month = minM;
@@ -91,33 +87,44 @@ function renderForm() {
     el.innerHTML = `<div class="success" role="status"><h3>預約成功</h3>
       <p><b>${esc(d.staffName)}</b>　<span class="when">${dLabel(d.date)} ${fmt(d.start)}</span></p>
       <p>預約代碼</p><p class="code">${esc(d.code)}</p>
-      <p class="hint">請截圖或記下這組代碼。需要取消時，到下方「查詢或取消預約」輸入代碼即可。</p>
+      <p class="hint">請截圖或記下此預約代碼。需要查詢或取消時，可至下方「查詢或取消預約」輸入預約代碼即可</p>
       <div><button type="button" class="btn ghost small" data-act="again">再預約一個時段</button></div></div>`;
     return;
   }
   if (!st || !S.sel.date || S.sel.start == null) {
-    el.innerHTML = '<p class="hint">選擇時段後填寫聯絡資料</p>';
+    el.innerHTML = '<p class="hint">選擇時段後，填寫聯絡資料</p>';
     return;
   }
   el.innerHTML = `<form id="book-form" class="form" novalidate>
     <div class="summary"><span class="dot" style="background:${color(st.color)}"></span><b>${esc(st.name)}</b><span class="when">${dLabel(S.sel.date)} ${fmt(S.sel.start)}</span></div>
     <div class="g2">
       <label class="field"><span>孩子姓名<b class="req" aria-hidden="true">*</b></span><input type="text" id="c-name" data-cf="name" autocomplete="off" maxlength="40" required value="${esc(S.form.name)}"></label>
-      <label class="field"><span>聯絡電話<b class="req" aria-hidden="true">*</b></span><input type="tel" id="c-phone" data-cf="phone" autocomplete="tel" maxlength="20" required value="${esc(S.form.phone)}"></label>
+      <label class="field"><span>聯絡電話<b class="req" aria-hidden="true">*</b></span><input type="tel" id="c-phone" data-cf="phone" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="0912345678" required value="${esc(S.form.phone)}"></label>
     </div>
-    <label class="field"><span>Email<b class="req" aria-hidden="true">*</b></span><input type="email" id="c-email" data-cf="email" autocomplete="email" maxlength="100" required value="${esc(S.form.email)}"></label>
-    <p class="hint">標示<b class="req">*</b>為必填</p>
+    <label class="field"><span>Email<b class="req" aria-hidden="true">*</b></span><input type="email" id="c-email" data-cf="email" autocomplete="email" maxlength="100" placeholder="name@gmail.com" required value="${esc(S.form.email)}"></label>
+    <p class="hint">標示 <b class="req">*</b> 為必填</p>
     <p class="err" id="c-err" role="alert"></p>
     <div><button type="submit" class="btn primary" id="c-submit">確認預約</button></div>
   </form>`;
 }
 
+/* 台灣手機：09 開頭 10 碼（可輸入 +886 9…、空格或 -），格式正確時回傳 09xxxxxxxx */
+function mobile(v) {
+  let d = String(v || '').replace(/[\s\-().]/g, '');
+  if (/^\+?886/.test(d)) d = '0' + d.replace(/^\+?886/, '');
+  return /^09\d{8}$/.test(d) ? d : '';
+}
+/* 只接受 Gmail 與 Yahoo 信箱 */
+const EMAIL_RE = /^[a-z0-9](?:[a-z0-9._%+-]{0,62}[a-z0-9])?@(?:gmail\.com|yahoo\.com(?:\.tw)?)$/;
+
 async function submitBooking() {
   const st = selStaff(), err = $('c-err'), btn = $('c-submit');
-  const f = { name: S.form.name.trim(), phone: U.normPhone(S.form.phone), email: S.form.email.trim(), note: '' };
+  const f = { name: S.form.name.trim(), phone: mobile(S.form.phone), email: S.form.email.trim().toLowerCase(), note: '' };
   if (!f.name) { err.textContent = '請填寫孩子姓名。'; $('c-name').focus(); return; }
-  if (!/^[0-9+()#-]{6,20}$/.test(f.phone)) { err.textContent = '請填寫正確的聯絡電話（數字，可含 + 或 -）。'; $('c-phone').focus(); return; }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) { err.textContent = f.email ? 'Email 格式看起來不對，請再確認一次。' : '請填寫 Email。'; $('c-email').focus(); return; }
+  if (!S.form.phone.trim()) { err.textContent = '請填寫聯絡電話。'; $('c-phone').focus(); return; }
+  if (!f.phone) { err.textContent = '聯絡電話格式錯誤，請輸入 09 開頭的 10 碼手機號碼，例如 0912345678。'; $('c-phone').focus(); return; }
+  if (!f.email) { err.textContent = '請填寫 Email。'; $('c-email').focus(); return; }
+  if (!EMAIL_RE.test(f.email)) { err.textContent = 'Email 格式錯誤，請輸入 Gmail 或 Yahoo 信箱，例如 name@gmail.com、name@yahoo.com.tw。'; $('c-email').focus(); return; }
   const sl = st && avail(st, S.sel.date).find(x => x.start === S.sel.start);
   if (!sl || !sl.ok) { err.textContent = '這個時段剛被預約走了，請選擇其他時段。'; renderTimes(); return; }
   err.textContent = ''; btn.disabled = true; btn.textContent = '送出中…'; S.busy = true;
@@ -144,15 +151,15 @@ function row(b, extra) {
 function renderDevice() {
   const el = $('b-device');
   const list = S.device.filter(b => b.date >= today()).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
-  if (!list.length) { el.innerHTML = '<p class="hint">輸入預約成功時拿到預約代碼，即能查看或取消預約</p>'; return; }
+  if (!list.length) { el.innerHTML = '<p class="hint">輸入預約成功時拿到的預約代碼，即可查看或取消預約</p>'; return; }
   el.innerHTML = '<p class="hint" style="margin-bottom:4px">你在這台裝置上預約的時段：</p><div class="blist">' +
     list.map(b => row(b, `<span class="mono hint">${esc(b.code)}</span>` + cancelControls('dev:' + b.code, 'cancel', `data-code="${esc(b.code)}"`))).join('') +
-    '</div><p class="hint" style="margin-top:10px">也可以輸入代碼查詢其他預約：</p>';
+    '</div><p class="hint" style="margin-top:10px">也可以輸入預約代碼查詢其他預約：</p>';
 }
 function renderLookup() {
   const el = $('b-lookup'), b = S.found;
   if (!b) { el.innerHTML = ''; return; }
-  const pill = b.status === 'booked' ? '<span class="pill ok">已預約</span>' : '<span class="pill no">已取消</span>';
+  const pill = b.status === 'booked' ? '' : '<span class="pill no">已取消</span>';
   const canCancel = b.status === 'booked' && b.date >= today();
   el.innerHTML = '<div class="blist">' + row(b, pill + (canCancel ? cancelControls('found', 'cancel', `data-code="${esc(b.code)}"`) : '')) + '</div>';
 }
@@ -216,9 +223,9 @@ document.addEventListener('submit', async e => {
 loadDevice();
 renderHeader(); renderDevice();
 store.subscribePublic(st => {
-  S.pub = { settings: st.settings || {}, staff: st.staff || [], slots: st.slots || [] };
+  S.pub = { staff: st.staff || [], slots: st.slots || [] };
   S.loaded = !!(st.got.staff && st.got.slots); S.loadErr = '';
-  renderHeader(); renderContact(); renderStaffCards(); renderDates(); renderTimes();
+  renderStaffCards(); renderDates(); renderTimes();
   if (!S.done && !S.busy && S.sel.start == null) renderForm();
 }, err => { S.loaded = true; S.loadErr = U.errMsg(err); renderStaffCards(); });
 

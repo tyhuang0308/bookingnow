@@ -5,7 +5,7 @@ const { $, esc, fmt, dLabel, today, color, num, WD, ORDER, COLORS, toMin } = U;
 const store = U.createStore(true);
 const S = {
   user: undefined, isAdmin: null, data: null, unsub: null, loadErr: '',
-  atab: 'staff', editingId: null, draft: null, confirm: null, filter: 'all', settingsDirty: false
+  atab: 'staff', editingId: null, draft: null, confirm: null, filter: 'all'
 };
 const aStaff = () => ((S.data && S.data.staff) || []).filter(s => s.name).sort((a, b) => num(a.order, 0) - num(b.order, 0));
 const GLOGO = '<svg class="gmark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
@@ -18,8 +18,6 @@ function renderTop() {
   } else if (S.user) {
     nav.innerHTML = `<button type="button" class="btn ghost small" data-act="logout">登出</button>`;
   } else nav.innerHTML = '';
-  const s = S.data && S.data.settings;
-  $('biz-sub').textContent = s && s.title ? '「' + s.title + '」的人員、時段與預約紀錄' : '管理研究人員、可預約時段與預約紀錄';
   const b = $('banner');
   if (U.isDemo) { b.hidden = false; b.innerHTML = '<b>預覽模式</b>：還沒填入 Firebase 設定，按「使用 Google 帳號登入」會直接以範例帳號進入。資料只存在這個瀏覽器，可以和 <a href="./">家長預約頁</a> 互相看到。'; }
   else b.hidden = true;
@@ -48,16 +46,14 @@ function render() {
   }
   if (!S.data) { root.innerHTML = S.loadErr ? `<div class="notice"><p>無法載入資料：${esc(S.loadErr)}</p></div>` : '<p class="hint">載入資料中…</p>'; return; }
   const tab = (v, label) => `<button type="button" role="tab" data-act="atab" data-v="${v}" aria-selected="${S.atab === v}">${label}</button>`;
-  root.innerHTML = `<div class="tabs" role="tablist">${tab('staff', '人員與時段')}${tab('bookings', '預約紀錄')}${tab('accounts', '老師帳號')}${tab('settings', '頁面設定')}</div>
+  root.innerHTML = `<div class="tabs" role="tablist">${tab('staff', '人員與時段')}${tab('bookings', '預約紀錄')}${tab('accounts', '老師帳號')}</div>
     <div class="tabgap"></div>
     <div id="a-staff" class="admin-grid" ${S.atab === 'staff' ? '' : 'hidden'}><aside class="panel" id="a-list"></aside><section class="panel" id="a-editor"></section></div>
     <div id="a-bookings" class="panel" ${S.atab === 'bookings' ? '' : 'hidden'}></div>
-    <div id="a-accounts" class="panel" ${S.atab === 'accounts' ? '' : 'hidden'}></div>
-    <div id="a-settings" class="panel" ${S.atab === 'settings' ? '' : 'hidden'}></div>`;
+    <div id="a-accounts" class="panel" ${S.atab === 'accounts' ? '' : 'hidden'}></div>`;
   if (S.atab === 'staff') { renderStaffList(); renderEditor(); }
   if (S.atab === 'bookings') renderBookings();
   if (S.atab === 'accounts') renderAccounts();
-  if (S.atab === 'settings') renderSettings();
 }
 
 /* 資料更新時只重畫不會打斷編輯的部分 */
@@ -67,7 +63,6 @@ function onData() {
   if (S.atab === 'staff') { renderStaffList(); if (!S.draft) renderEditor(); }
   if (S.atab === 'bookings') renderBookings();
   if (S.atab === 'accounts') renderAccounts();
-  if (S.atab === 'settings' && !S.settingsDirty) renderSettings();
 }
 
 /* ---------- 人員與時段 ---------- */
@@ -271,27 +266,13 @@ async function saveAdmins(list, okMsg) {
   catch (e) { U.toast(U.errMsg(e)); }
 }
 
-/* ---------- 頁面設定 ---------- */
-function renderSettings() {
-  const el = $('a-settings'); if (!el) return; const s = S.data.settings || {};
-  el.innerHTML = `<form id="set-form" class="settings" novalidate>
-    <h2 class="panel-title">家長預約頁顯示的內容</h2>
-    <label class="field"><span>頁面名稱</span><input type="text" id="s-title" maxlength="60" value="${esc(s.title || '')}" placeholder="例如：兒童職能治療預約"></label>
-    <label class="field"><span>簡介（顯示在預約頁最上方）</span><textarea id="s-intro" maxlength="500" placeholder="例如：每次課程請提早 5 分鐘到。">${esc(s.intro || '')}</textarea></label>
-    <label class="field"><span>聯絡提示（顯示在家長頁「填寫聯絡資料」下方；留空則顯示「若有任何疑問，歡迎至Line官方帳號詢問，謝謝！」）</span><textarea id="s-contact" maxlength="300" placeholder="若有任何疑問，歡迎至Line官方帳號詢問，謝謝！">${esc(s.contact || '')}</textarea></label>
-    <p class="err" id="s-err" role="alert"></p>
-    <div><button type="submit" class="btn primary" id="s-save">儲存設定</button></div>
-  </form>`;
-  S.settingsDirty = false;
-}
-
 /* ---------- 登入流程 ---------- */
 function startData() {
   if (S.unsub) S.unsub();
   S.unsub = store.subscribeAdmin(st => {
-    if (!(st.got.settings && st.got.staff && st.got.bookings && st.got.admins)) return;
+    if (!(st.got.staff && st.got.bookings && st.got.admins)) return;
     const first = !S.data;
-    S.data = { settings: st.settings || {}, staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [] };
+    S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [] };
     if (first) render(); else onData();
   }, err => { S.loadErr = U.errMsg(err); if (!S.data) render(); else U.toast(S.loadErr); });
 }
@@ -362,21 +343,12 @@ document.addEventListener('change', e => {
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.closest && t.closest('#ed-form')) { readEditor(); updatePreview(); $('ed-err').textContent = ''; return; }
-  if (t.closest && t.closest('#set-form')) S.settingsDirty = true;
   if (t.id === 'acct-new') $('acct-err').textContent = '';
 });
 document.addEventListener('submit', async e => {
   e.preventDefault();
   const id = e.target.id;
   if (id === 'ed-form') saveStaff();
-  if (id === 'set-form') {
-    const btn = $('s-save'); btn.disabled = true;
-    try {
-      await store.saveSettings({ title: $('s-title').value.trim(), intro: $('s-intro').value.trim(), contact: $('s-contact').value.trim() });
-      S.settingsDirty = false; U.toast('已儲存設定');
-    } catch (err) { $('s-err').textContent = U.errMsg(err); }
-    btn.disabled = false;
-  }
   if (id === 'acct-form') {
     const v = $('acct-new').value.trim().toLowerCase();
     if (!/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(v)) { $('acct-err').textContent = '請輸入完整的 Email，例如 teacher@gmail.com。'; return; }

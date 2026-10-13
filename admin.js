@@ -270,7 +270,7 @@ function renderBookings() {
       const sync = b.calendarEventId ? '<div class="nt">已加入行事曆</div>' : (b.calendarError === 'no-access' ? '<div class="nt warn">行事曆未同步：請確認研究人員已共用行事曆</div>' : '');
       const reopenBtn = past ? '' : (covered(b)
         ? `<button type="button" class="btn ghost small" data-act="unreopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}">取消加開</button>`
-        : `<button type="button" class="btn ghost small" data-act="reopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}" title="這個時段借到其他空間時，讓其他研究人員的同時段可以再被預約">重新開放此時段</button>`);
+        : `<button type="button" class="btn ghost small" data-act="reopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}">重新開放此時段</button>`);
       detail += `<tr><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
         <td><b>${esc(b.name)}</b>${b.round ? `<span class="tag">第${b.round}次</span>` : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
         <td><div class="nt mono">${esc(b.code || '')}</div>${sync}</td>

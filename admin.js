@@ -108,9 +108,10 @@ function renderEditor() {
       <label class="field"><span>姓名</span><input type="text" id="f-name" maxlength="40" value="${esc(d.name)}"></label>
       <label class="field"><span>職稱／說明</span><input type="text" id="f-role" maxlength="60" value="${esc(d.role)}"></label>
     </div>
-    <label class="field"><span>Google行事曆帳號（選填，家長預約後會自動加入此帳號的Google行事曆）</span>
-      <input type="email" id="f-cal" list="cal-opts" maxlength="200" value="${esc(d.calEmail || '')}" placeholder="researcher@gmail.com" autocomplete="off" ${S.data.calendarsUnavailable ? 'disabled' : ''}>
+    <label class="field"><span>Google行事曆ID（選填，家長預約後會自動加入這個行事曆）</span>
+      <input type="text" id="f-cal" list="cal-opts" maxlength="200" value="${esc(d.calEmail || '')}" placeholder="researcher@gmail.com" autocomplete="off" spellcheck="false" ${S.data.calendarsUnavailable ? 'disabled' : ''}>
       <datalist id="cal-opts">${(S.data.admins || []).map(e => `<option value="${esc(e)}"></option>`).join('')}</datalist></label>
+    <p class="hint">主要行事曆請填Gmail；其他行事曆請到Google日曆「設定」→ 點選該行事曆 →「整合日曆」，複製「日曆ID」。研究人員需先把這個行事曆共用給網站擁有者，權限選「變更活動」</p>
     ${S.data.calendarsUnavailable ? '<p class="warn">要設定行事曆帳號，請先依說明更新Firebase的資料庫安全規則</p>' : ''}
     <fieldset class="field"><legend>代表色</legend><div class="swatches">${COLORS.map((c, i) => `<label><input type="radio" name="f-color" id="f-color-${i}" value="${c}" ${c === d.color ? 'checked' : ''} aria-label="顏色 ${i + 1}"><span style="background:${c}"></span></label>`).join('')}</div></fieldset>
     <div>
@@ -190,7 +191,7 @@ async function saveStaff() {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d.bookUntil || '')) { err.textContent = '請選擇開放預約到哪一天'; $('f-until').focus(); return; }
   if (d.bookUntil < today()) { err.textContent = '開放預約的日期不能早於今天'; $('f-until').focus(); return; }
   if (d.bookUntil > U.addDays(today(), 730)) { err.textContent = '開放預約的日期最多只能設定到兩年內'; $('f-until').focus(); return; }
-  if (d.calEmail && !/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(d.calEmail)) { err.textContent = 'Google行事曆帳號格式不正確，請輸入完整的Email'; $('f-cal').focus(); return; }
+  if (d.calEmail && !/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(d.calEmail)) { err.textContent = 'Google行事曆ID格式不正確，請填Gmail或從Google日曆設定複製的日曆ID'; $('f-cal').focus(); return; }
   const id = S.editingId || U.rid();
   const ex = aStaff().find(s => s.id === id);
   const weekly = {};
@@ -232,7 +233,7 @@ function renderBookings() {
         const st = aStaff().find(s => s.id === b.staffId), k = 'bk:' + b.id;
         html += `<tr><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
           <td><b>${esc(b.name)}</b><div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
-          <td>${b.note ? `<div class="nt">${esc(b.note)}</div>` : ''}<div class="nt mono">${esc(b.code || '')}</div>${b.calendarEventId ? '<div class="nt">已加入行事曆</div>' : ''}</td>
+          <td>${b.note ? `<div class="nt">${esc(b.note)}</div>` : ''}<div class="nt mono">${esc(b.code || '')}</div>${b.calendarEventId ? '<div class="nt">已加入行事曆</div>' : (b.calendarError === 'no-access' ? '<div class="nt warn">行事曆未同步：請確認研究人員已共用行事曆</div>' : '')}</td>
           <td class="ac">${S.confirm === k
             ? `<span class="confirm">取消這筆？<button type="button" class="btn danger small" data-act="bk-cancel" data-id="${esc(b.id)}">確定取消</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
             : `<button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">取消預約</button>`}</td></tr>`;

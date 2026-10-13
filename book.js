@@ -26,17 +26,17 @@ function renderHeader() {
   const b = $('banner');
   if (U.isDemo) {
     b.hidden = false;
-    b.innerHTML = '<b>預覽模式</b>：還沒填入 Firebase 設定，人員與預約都是範例，只存在這個瀏覽器。後台在另一個網址 <a href="admin.html">admin.html</a>（這行說明只在預覽模式出現，正式網站的家長頁沒有通往後台的連結）。';
+    b.innerHTML = '<b>預覽模式</b>：還沒填入 Firebase 設定，人員與預約都是範例，只存在這個瀏覽器。後台在另一個網址 <a href="admin.html">admin.html</a>（這行說明只在預覽模式出現，正式網站的家長頁沒有通往後台的連結）';
   } else b.hidden = true;
 }
 
 function renderStaffCards() {
   const el = $('b-staff');
-  if (S.loadErr && !S.pub.staff.length) { el.innerHTML = `<div class="notice"><p>暫時無法載入預約資料。${esc(S.loadErr)}</p><div><button type="button" class="btn ghost small" data-act="reload">重新載入</button></div></div>`; return; }
+  if (S.loadErr && !S.pub.staff.length) { el.innerHTML = `<div class="notice"><p>暫時無法載入預約資料${esc(S.loadErr)}</p><div><button type="button" class="btn ghost small" data-act="reload">重新載入</button></div></div>`; return; }
   if (!S.loaded) { el.innerHTML = '<p class="hint">正在載入可預約的時段…</p>'; return; }
   const list = activeStaff();
   if (S.sel.staffId && !list.some(s => s.id === S.sel.staffId)) S.sel = { staffId: null, date: null, start: null };
-  if (!list.length) { el.innerHTML = '<p class="hint">目前沒有開放預約的研究人員。</p>'; return; }
+  if (!list.length) { el.innerHTML = '<p class="hint">目前沒有開放預約的研究人員</p>'; return; }
   el.innerHTML = list.map(s => `<button type="button" class="staff-card" data-act="pick-staff" data-id="${esc(s.id)}" aria-pressed="${s.id === S.sel.staffId}">
     <span class="dot" style="background:${color(s.color)}"></span><span class="nm">${esc(s.name)}</span>
     ${s.role ? `<span class="rl">${esc(s.role)}</span>` : ''}</button>`).join('');
@@ -76,9 +76,9 @@ function renderTimes() {
   const list = avail(st, date).filter(x => !x.past);
   if (S.sel.start != null && !list.some(x => x.ok && x.start === S.sel.start)) {
     S.sel.start = null;
-    if (!S.busy) { renderForm(); U.toast('你選的時段剛被別人預約了，請重新選擇。'); }
+    if (!S.busy) { renderForm(); U.toast('你選的時段剛被別人預約了，請重新選擇'); }
   }
-  if (!list.length) { el.innerHTML = `<p class="caption"><b>${dLabel(date)}</b></p><p class="hint">這一天沒有可預約的時段，請換一天。</p>`; return; }
+  if (!list.length) { el.innerHTML = `<p class="caption"><b>${dLabel(date)}</b></p><p class="hint">這一天沒有可預約的時段，請換一天</p>`; return; }
   el.innerHTML = `<p class="caption"><b>${dLabel(date)}</b></p><div class="slots">` +
     list.map(x => `<button type="button" class="slot" data-act="pick-time" data-s="${x.start}" ${x.ok ? '' : 'disabled'} aria-pressed="${x.start === S.sel.start}" aria-label="${fmt(x.start)} 開始${x.ok ? '' : '，已被預約'}">${fmt(x.start)}</button>`).join('') + '</div>';
 }
@@ -237,7 +237,7 @@ store.subscribePublic(st => {
   if (!S.done && !S.busy && S.sel.start == null) renderForm();
 }, err => { S.loaded = true; S.loadErr = U.errMsg(err); renderStaffCards(); });
 
-// 確認這台裝置記得的預約是否仍有效（例如被老師取消）
+// 確認這台裝置記得的預約是否仍有效（例如被研究人員取消）
 S.device.forEach(d => {
   store.getTicket(d.code).then(t => {
     if (t.status !== 'booked') { S.device = S.device.filter(x => x.code !== d.code); saveDevice(); renderDevice(); }

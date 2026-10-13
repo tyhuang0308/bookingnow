@@ -4,14 +4,14 @@
 const { $, esc, fmt, dLabel, today, color, num, WD, ORDER, addDays, parseD } = U;
 const store = U.createStore(false);
 const S = {
-  pub: { staff: [], slots: [] }, loaded: false, loadErr: '',
+  pub: { staff: [], slots: [], rooms: {} }, loaded: false, loadErr: '',
   sel: { staffId: null, date: null, start: null }, month: null, form: { name: '', phone: '', email: '', note: '' },
   done: null, busy: false, device: [], found: null, confirm: null
 };
 
 const activeStaff = () => S.pub.staff.filter(s => s.active !== false && s.name).sort((a, b) => num(a.order, 0) - num(b.order, 0));
 const selStaff = () => activeStaff().find(s => s.id === S.sel.staffId) || null;
-const avail = (st, date) => U.available(st, date, S.pub.slots);
+const avail = (st, date) => U.available(st, date, S.pub.slots, S.pub.rooms);
 
 /* 這台裝置預約過的代碼 */
 function loadDevice() { try { S.device = (JSON.parse(localStorage.getItem('booking-mine') || '[]') || []).filter(b => b && b.code && b.date >= today()); } catch (e) { S.device = []; } }
@@ -132,7 +132,7 @@ async function submitBooking() {
   if (!sl || !sl.ok) { err.textContent = '這個時段剛被預約走了，請選擇其他時段。'; renderTimes(); return; }
   err.textContent = ''; btn.disabled = true; btn.textContent = '送出中…'; S.busy = true;
   try {
-    const r = await store.book({ staff: st, date: S.sel.date, start: sl.start, end: sl.end, name: f.name, phone: f.phone, email: f.email, note: f.note });
+    const r = await store.book({ staff: st, date: S.sel.date, start: sl.start, end: sl.end, sameDay: S.pub.slots.filter(x => x.date === S.sel.date), name: f.name, phone: f.phone, email: f.email, note: f.note });
     S.busy = false; S.done = r; S.sel.start = null; S.form.note = '';
     S.device.push({ code: r.code, staffName: r.staffName, date: r.date, start: r.start, end: r.end }); saveDevice();
     renderForm(); renderTimes(); renderDates(); renderDevice();
@@ -226,8 +226,8 @@ document.addEventListener('submit', async e => {
 loadDevice();
 renderHeader(); renderDevice();
 store.subscribePublic(st => {
-  S.pub = { staff: st.staff || [], slots: st.slots || [] };
-  S.loaded = !!(st.got.staff && st.got.slots); S.loadErr = '';
+  S.pub = { staff: st.staff || [], slots: st.slots || [], rooms: st.rooms || {} };
+  S.loaded = !!(st.got.staff && st.got.slots && st.got.rooms); S.loadErr = '';
   renderStaffCards(); renderDates(); renderTimes();
   if (!S.done && !S.busy && S.sel.start == null) renderForm();
 }, err => { S.loaded = true; S.loadErr = U.errMsg(err); renderStaffCards(); });

@@ -5,7 +5,7 @@ const { $, esc, fmt, dLabel, today, color, num, WD, ORDER, COLORS, toMin } = U;
 const store = U.createStore(true);
 const S = {
   user: undefined, isAdmin: null, data: null, unsub: null, loadErr: '',
-  atab: 'staff', editingId: null, draft: null, confirm: null, filter: 'all'
+  atab: 'staff', editingId: null, draft: null, confirm: null, filter: 'all', bkMonth: null, bkDay: null
 };
 const aStaff = () => ((S.data && S.data.staff) || []).filter(s => s.name).sort((a, b) => num(a.order, 0) - num(b.order, 0));
 const GLOGO = '<svg class="gmark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
@@ -213,35 +213,73 @@ async function saveStaff() {
   } catch (e) { btn.disabled = false; btn.textContent = '儲存'; err.textContent = U.errMsg(e); }
 }
 
-/* ---------- 預約紀錄 ---------- */
+/* ---------- 預約紀錄（月曆） ---------- */
 function upcoming() { const t = today(); return (S.data.bookings || []).filter(b => b.status === 'booked' && b.date >= t); }
+function bookedOn(date) {
+  return (S.data.bookings || []).filter(b => b.status === 'booked' && b.date === date && (S.filter === 'all' || b.staffId === S.filter))
+    .sort((a, b) => a.start - b.start);
+}
+function extrasOn(date) { return ((S.data.rooms || {})[date] || {}).extra || []; }
 function renderBookings() {
   const el = $('a-bookings'); if (!el) return;
   const t = today(), all = upcoming(), todayN = all.filter(b => b.date === t).length;
-  let rows = S.filter === 'all' ? all : all.filter(b => b.staffId === S.filter);
-  rows = rows.slice().sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+  const minM = U.adminFrom().slice(0, 7);
+  if (!S.bkMonth) S.bkMonth = t.slice(0, 7);
+  if (S.bkMonth < minM) S.bkMonth = minM;
+  if (!S.bkDay) S.bkDay = t;
+  const [y, m] = S.bkMonth.split('-').map(Number);
+  const daysIn = new Date(y, m, 0).getDate(), lead = (new Date(y, m - 1, 1).getDay() + 6) % 7;
   const opts = aStaff().map(s => `<option value="${esc(s.id)}" ${S.filter === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
-  let html = `<div class="bk-head"><p class="stat">今天 <b>${todayN}</b> 筆 · 即將到來共 <b>${all.length}</b> 筆</p>
-    <div class="topnav"><label class="field" style="flex-direction:row;align-items:center;gap:8px"><span>顯示</span><select id="a-filter"><option value="all">全部人員</option>${opts}</select></label>
-    <button type="button" class="btn ghost small" data-act="export">匯出 CSV</button></div></div>`;
-  if (!rows.length) html += '<div class="empty"><p>目前沒有即將到來的預約。家長完成預約後會立刻出現在這裡，不需要重新整理</p></div>';
-  else {
-    const groups = {}; rows.forEach(x => (groups[x.date] = groups[x.date] || []).push(x));
-    for (const date of Object.keys(groups)) {
-      html += `<div class="bk-day"><h3>${dLabel(date)}${date === t ? ' · 今天' : ''}</h3><div class="tw"><table><tbody>`;
-      for (const b of groups[date]) {
-        const st = aStaff().find(s => s.id === b.staffId), k = 'bk:' + b.id;
-        html += `<tr><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
-          <td><b>${esc(b.name)}</b><div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
-          <td>${b.note ? `<div class="nt">${esc(b.note)}</div>` : ''}<div class="nt mono">${esc(b.code || '')}</div>${b.calendarEventId ? '<div class="nt">已加入行事曆</div>' : (b.calendarError === 'no-access' ? '<div class="nt warn">行事曆未同步：請確認研究人員已共用行事曆</div>' : '')}</td>
-          <td class="ac">${S.confirm === k
-            ? `<span class="confirm">取消這筆？<button type="button" class="btn danger small" data-act="bk-cancel" data-id="${esc(b.id)}">確定取消</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
-            : `<button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">取消預約</button>`}</td></tr>`;
-      }
-      html += '</tbody></table></div></div>';
-    }
+  const sColor = id => { const st = aStaff().find(s => s.id === id); return color(st && st.color); };
+
+  let cal = ORDER.map(d => `<div class="bkc-wh">${WD[d]}</div>`).join('') + '<div class="bkc-out"></div>'.repeat(lead);
+  for (let i = 1; i <= daysIn; i++) {
+    const d = S.bkMonth + '-' + U.pad(i), list = bookedOn(d), ex = extrasOn(d).length;
+    const cls = ['bkc-day', d === t ? 'is-today' : '', d < t ? 'is-past' : ''].join(' ');
+    cal += `<button type="button" class="${cls}" data-act="bk-day" data-d="${d}" aria-pressed="${d === S.bkDay}" aria-label="${dLabel(d)}，${list.length} 筆預約">
+      <span class="bkc-top"><span class="bkc-n">${i}</span>${list.length ? `<span class="bkc-count">${list.length}</span>` : ''}</span>
+      <span class="bkc-items">${list.slice(0, 3).map(b => `<span class="bkc-item"><span class="dot" style="background:${sColor(b.staffId)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}</span>`).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 筆</span>` : ''}${ex ? '<span class="bkc-more">已加開場地</span>' : ''}</span>
+    </button>`;
   }
-  el.innerHTML = html;
+
+  // 選取日期的明細
+  const day = S.bkDay, list = bookedOn(day), extras = extrasOn(day);
+  const covered = b => extras.some(x => x.s <= b.start && b.end <= x.e);
+  let detail = `<div class="bk-day"><h3>${dLabel(day)}${day === t ? ' · 今天' : ''}</h3>`;
+  if (!list.length) detail += '<p class="hint" style="padding-top:10px">這一天沒有預約</p>';
+  else {
+    detail += '<div class="tw"><table><tbody>';
+    for (const b of list) {
+      const st = aStaff().find(s => s.id === b.staffId), k = 'bk:' + b.id, past = day < t;
+      const sync = b.calendarEventId ? '<div class="nt">已加入行事曆</div>' : (b.calendarError === 'no-access' ? '<div class="nt warn">行事曆未同步：請確認研究人員已共用行事曆</div>' : '');
+      const reopenBtn = past ? '' : (covered(b)
+        ? `<button type="button" class="btn ghost small" data-act="unreopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}">取消加開</button>`
+        : `<button type="button" class="btn ghost small" data-act="reopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}" title="這個時段借到其他空間時，讓其他研究人員的同時段可以再被預約">重新開放此時段</button>`);
+      detail += `<tr><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
+        <td><b>${esc(b.name)}</b><div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
+        <td><div class="nt mono">${esc(b.code || '')}</div>${sync}</td>
+        <td class="ac">${S.confirm === k
+          ? `<span class="confirm">取消這筆？<button type="button" class="btn danger small" data-act="bk-cancel" data-id="${esc(b.id)}">確定取消</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
+          : `<span class="acts">${reopenBtn}${past ? '' : `<button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">取消預約</button>`}</span>`}</td></tr>`;
+    }
+    detail += '</tbody></table></div>';
+  }
+  if (extras.length) {
+    detail += `<div class="extras"><p class="hint">已加開場地（這些時段其他研究人員可以再被預約）：</p>${extras.slice().sort((a, b) => a.s - b.s).map(x =>
+      `<span class="cchip">${fmt(x.s)}–${fmt(x.e)}<button type="button" data-act="unreopen" data-d="${day}" data-s="${x.s}" data-e="${x.e}" aria-label="取消加開 ${fmt(x.s)}">×</button></span>`).join('')}</div>`;
+  }
+  detail += '</div>';
+
+  el.innerHTML = `<div class="bk-head"><p class="stat">今天 <b>${todayN}</b> 筆 · 即將到來共 <b>${all.length}</b> 筆</p>
+    <div class="topnav"><label class="field" style="flex-direction:row;align-items:center;gap:8px"><span>顯示</span><select id="a-filter"><option value="all">全部人員</option>${opts}</select></label>
+    <button type="button" class="btn ghost small" data-act="export">匯出 CSV</button></div></div>
+    <div class="monthbar">
+      <button type="button" class="arrow" data-act="bkm" data-n="-1" ${S.bkMonth <= minM ? 'disabled' : ''} aria-label="上一個月">‹</button>
+      <span class="mname">${y} 年 ${m} 月</span>
+      <button type="button" class="arrow" data-act="bkm" data-n="1" aria-label="下一個月">›</button>
+    </div>
+    <div class="bkc">${cal}</div>
+    ${detail}`;
 }
 function exportCSV() {
   const list = (S.data.bookings || []).slice().sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
@@ -286,9 +324,9 @@ async function saveAdmins(list, okMsg) {
 function startData() {
   if (S.unsub) S.unsub();
   S.unsub = store.subscribeAdmin(st => {
-    if (!(st.got.staff && st.got.bookings && st.got.admins && st.got.calendars)) return;
+    if (!(st.got.staff && st.got.bookings && st.got.admins && st.got.calendars && st.got.rooms)) return;
     const first = !S.data;
-    S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [], calendars: st.calendars || {}, calendarsUnavailable: !!st.calendarsUnavailable };
+    S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [], calendars: st.calendars || {}, calendarsUnavailable: !!st.calendarsUnavailable, rooms: st.rooms || {} };
     if (first) render(); else onData();
   }, err => { S.loadErr = U.errMsg(err); if (!S.data) render(); else U.toast(S.loadErr); });
 }
@@ -319,6 +357,18 @@ document.addEventListener('click', async e => {
     case 'ask': S.confirm = b.dataset.k; rerenderConfirm(); break;
     case 'confirm-no': S.confirm = null; rerenderConfirm(); break;
     case 'export': exportCSV(); break;
+    case 'bkm': {
+      const [y, m] = S.bkMonth.split('-').map(Number), d = new Date(y, m - 1 + Number(b.dataset.n), 1);
+      S.bkMonth = d.getFullYear() + '-' + U.pad(d.getMonth() + 1); S.confirm = null; renderBookings(); break;
+    }
+    case 'bk-day': S.bkDay = b.dataset.d; S.confirm = null; renderBookings(); break;
+    case 'reopen': case 'unreopen': {
+      const d = b.dataset.d, s = Number(b.dataset.s), en = Number(b.dataset.e), on = b.dataset.act === 'reopen';
+      b.disabled = true;
+      try { await (on ? store.reopen(d, s, en) : store.unreopen(d, s, en)); U.toast(on ? `已重新開放 ${dLabel(d)} ${fmt(s)}–${fmt(en)}，其他研究人員這段時間可以再被預約` : `已取消加開 ${dLabel(d)} ${fmt(s)}–${fmt(en)}`); }
+      catch (err) { U.toast(U.errMsg(err)); }
+      renderBookings(); break;
+    }
     case 'bk-cancel': {
       const bk = (S.data.bookings || []).find(x => x.id === b.dataset.id); if (!bk) break;
       b.disabled = true;

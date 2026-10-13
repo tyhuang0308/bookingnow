@@ -102,8 +102,8 @@ function renderForm() {
     <div class="summary"><span class="dot" style="background:${color(st.color)}"></span><b>${esc(st.name)}</b><span class="when">${dLabel(S.sel.date)} ${fmt(S.sel.start)}</span></div>
     <div class="g2">
       <label class="field"><span>孩子姓名<b class="req" aria-hidden="true">*</b></span><input type="text" id="c-name" data-cf="name" autocomplete="off" maxlength="40" required value="${esc(S.form.name)}"></label>
-      <fieldset class="field"><legend>第幾次評估<b class="req" aria-hidden="true">*</b></legend>
-        <div class="seg" role="radiogroup">${[1, 2, 3].map(n => `<label><input type="radio" name="c-round" id="c-round-${n}" data-cf="round" value="${n}" ${String(S.form.round) === String(n) ? 'checked' : ''}><span>第${n}次</span></label>`).join('')}</div></fieldset>
+      <div class="field"><span id="c-round-label">第幾次評估<b class="req" aria-hidden="true">*</b></span>
+        <div class="seg" role="radiogroup" aria-labelledby="c-round-label">${[1, 2, 3].map(n => `<label><input type="radio" name="c-round" id="c-round-${n}" data-cf="round" value="${n}" ${String(S.form.round) === String(n) ? 'checked' : ''}><span>第${n}次</span></label>`).join('')}</div></div>
     </div>
     <div class="g2">
       <label class="field"><span>聯絡電話<b class="req" aria-hidden="true">*</b></span><input type="tel" id="c-phone" data-cf="phone" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="0912345678" required value="${esc(S.form.phone)}"></label>

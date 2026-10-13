@@ -66,9 +66,16 @@ function onData() {
 }
 
 /* ---------- 研究人員與時段 ---------- */
+/** 開放預約到哪一天（舊資料只有「未來幾天」時換算成日期） */
+function untilOf(s) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s.bookUntil || '')) return s.bookUntil;
+  return U.addDays(today(), Math.min(90, Math.max(1, num(s.advanceDays, 30))) - 1);
+}
+function shortDate(s) { const d = U.parseD(s); return (d.getMonth() + 1) + '/' + d.getDate(); }
 function staffMeta(s) {
   const days = ORDER.filter(d => (s.weekly && s.weekly[d] || []).length).map(d => WD[d]).join('');
-  return `${num(s.duration, 60)} 分 · ${days ? '週' + days : '尚未設定時段'}`;
+  const until = untilOf(s);
+  return `${num(s.duration, 60)} 分 · ${days ? '週' + days : '尚未設定時段'} · ${until < today() ? '已停止開放' : '開放至 ' + shortDate(until)}`;
 }
 function renderStaffList() {
   const el = $('a-list'); if (!el) return;
@@ -78,12 +85,12 @@ function renderStaffList() {
 }
 function blankDraft() {
   const used = aStaff().map(s => s.color), wk = () => [{ s: '09:00', e: '12:00' }, { s: '14:00', e: '18:00' }];
-  return { name: '', role: '', color: COLORS.find(c => !used.includes(c)) || COLORS[0], duration: 60, buffer: 0, advanceDays: 30, notice: 2, active: true,
-    weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [], 0: [] }, closedDates: [] };
+  return { name: '', role: '', color: COLORS.find(c => !used.includes(c)) || COLORS[0], duration: 60, buffer: 0, bookUntil: U.addDays(today(), 29), notice: 2, active: true,
+    weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [], 0: [] }, closedDates: [], calEmail: '' };
 }
 function cloneStaff(s) {
   const w = {}; for (const d of ORDER) w[d] = ((s.weekly && s.weekly[d]) || []).map(r => ({ s: r.s, e: r.e }));
-  return { name: s.name || '', role: s.role || '', color: color(s.color), duration: num(s.duration, 60), buffer: num(s.buffer, 0), advanceDays: num(s.advanceDays, 30), notice: num(s.notice, 0), active: s.active !== false, weekly: w, closedDates: (s.closedDates || []).slice() };
+  return { name: s.name || '', role: s.role || '', color: color(s.color), duration: num(s.duration, 60), buffer: num(s.buffer, 0), bookUntil: untilOf(s), notice: num(s.notice, 0), active: s.active !== false, weekly: w, closedDates: (s.closedDates || []).slice(), calEmail: (S.data && S.data.calendars && S.data.calendars[s.id]) || '' };
 }
 function renderEditor() {
   const el = $('a-editor'), d = S.draft; if (!el) return;
@@ -101,12 +108,16 @@ function renderEditor() {
       <label class="field"><span>姓名</span><input type="text" id="f-name" maxlength="40" value="${esc(d.name)}"></label>
       <label class="field"><span>職稱／說明</span><input type="text" id="f-role" maxlength="60" value="${esc(d.role)}"></label>
     </div>
+    <label class="field"><span>Google行事曆帳號（選填，家長預約後會自動加入此帳號的Google行事曆）</span>
+      <input type="email" id="f-cal" list="cal-opts" maxlength="200" value="${esc(d.calEmail || '')}" placeholder="researcher@gmail.com" autocomplete="off" ${S.data.calendarsUnavailable ? 'disabled' : ''}>
+      <datalist id="cal-opts">${(S.data.admins || []).map(e => `<option value="${esc(e)}"></option>`).join('')}</datalist></label>
+    ${S.data.calendarsUnavailable ? '<p class="warn">要設定行事曆帳號，請先依說明更新Firebase的資料庫安全規則</p>' : ''}
     <fieldset class="field"><legend>代表色</legend><div class="swatches">${COLORS.map((c, i) => `<label><input type="radio" name="f-color" id="f-color-${i}" value="${c}" ${c === d.color ? 'checked' : ''} aria-label="顏色 ${i + 1}"><span style="background:${c}"></span></label>`).join('')}</div></fieldset>
     <div>
       <div class="g4">
         <label class="field"><span>每段時長</span><span class="unit"><input type="number" id="f-dur" min="5" max="480" step="5" value="${d.duration}"><em>分鐘</em></span></label>
         <label class="field"><span>段與段間隔</span><span class="unit"><input type="number" id="f-buf" min="0" max="240" step="5" value="${d.buffer}"><em>分鐘</em></span></label>
-        <label class="field"><span>開放預約未來</span><span class="unit"><input type="number" id="f-adv" min="1" max="90" value="${d.advanceDays}"><em>天</em></span></label>
+        <label class="field"><span>開放預約到</span><input type="date" id="f-until" min="${t}" value="${esc(d.bookUntil || '')}"></label>
         <label class="field"><span>最晚需提前</span><span class="unit"><input type="number" id="f-notice" min="0" max="168" value="${d.notice}"><em>小時</em></span></label>
       </div>
       <div class="quick" style="margin-top:8px">常用時長：${[30, 40, 45, 50, 60, 90].map(v => `<button type="button" class="chip" data-act="ed-dur" data-v="${v}" aria-pressed="${d.duration === v}">${v}</button>`).join('')}</div>
@@ -133,9 +144,9 @@ function renderEditor() {
 }
 function readEditor() {
   const d = S.draft; if (!d || !$('f-name')) return;
-  d.name = $('f-name').value; d.role = $('f-role').value;
+  d.name = $('f-name').value; d.role = $('f-role').value; d.calEmail = $('f-cal').value.trim().toLowerCase(); d.bookUntil = $('f-until').value;
   const c = document.querySelector('input[name="f-color"]:checked'); if (c) d.color = c.value;
-  d.duration = num($('f-dur').value, 0); d.buffer = num($('f-buf').value, 0); d.advanceDays = num($('f-adv').value, 0); d.notice = num($('f-notice').value, 0);
+  d.duration = num($('f-dur').value, 0); d.buffer = num($('f-buf').value, 0); d.notice = num($('f-notice').value, 0);
   d.active = $('f-active').checked;
   for (const day of ORDER) {
     if (!$('f-day-' + day).checked) { d.weekly[day] = []; continue; }
@@ -176,7 +187,10 @@ async function saveStaff() {
   if (!name) { err.textContent = '請填寫研究人員姓名。'; $('f-name').focus(); return; }
   const probs = problems(d).filter(p => !p.includes('排不進'));
   if (probs.length) { err.textContent = probs[0]; return; }
-  if (!(d.advanceDays >= 1 && d.advanceDays <= 90)) { err.textContent = '開放預約天數請填1到90天。'; return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.bookUntil || '')) { err.textContent = '請選擇開放預約到哪一天'; $('f-until').focus(); return; }
+  if (d.bookUntil < today()) { err.textContent = '開放預約的日期不能早於今天'; $('f-until').focus(); return; }
+  if (d.bookUntil > U.addDays(today(), 730)) { err.textContent = '開放預約的日期最多只能設定到兩年內'; $('f-until').focus(); return; }
+  if (d.calEmail && !/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(d.calEmail)) { err.textContent = 'Google行事曆帳號格式不正確，請輸入完整的Email'; $('f-cal').focus(); return; }
   const id = S.editingId || U.rid();
   const ex = aStaff().find(s => s.id === id);
   const weekly = {};
@@ -184,14 +198,16 @@ async function saveStaff() {
   const data = {
     name, role: d.role.trim().slice(0, 60), color: color(d.color),
     duration: Math.round(d.duration), buffer: Math.max(0, Math.round(d.buffer)),
-    advanceDays: Math.round(d.advanceDays), notice: Math.max(0, Math.round(d.notice)),
+    bookUntil: d.bookUntil, notice: Math.max(0, Math.round(d.notice)),
     active: !!d.active, weekly, closedDates: d.closedDates.filter(c => c >= today()).sort(),
     order: ex ? num(ex.order, Date.now()) : Date.now(), updatedAt: Date.now()
   };
   const btn = $('ed-save'); btn.disabled = true; btn.textContent = '儲存中…';
   try {
     await store.saveStaff(id, data);
-    S.editingId = id; S.draft = cloneStaff(data); S.confirm = null; U.toast('已儲存 ' + name);
+    const calEmail = d.calEmail || '';
+    if (!S.data.calendarsUnavailable && calEmail !== ((S.data.calendars || {})[id] || '')) await store.saveCalendar(id, calEmail);
+    S.editingId = id; S.draft = Object.assign(cloneStaff(data), { calEmail }); S.confirm = null; U.toast('已儲存 ' + name);
     renderStaffList(); renderEditor();
   } catch (e) { btn.disabled = false; btn.textContent = '儲存'; err.textContent = U.errMsg(e); }
 }
@@ -216,7 +232,7 @@ function renderBookings() {
         const st = aStaff().find(s => s.id === b.staffId), k = 'bk:' + b.id;
         html += `<tr><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
           <td><b>${esc(b.name)}</b><div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
-          <td>${b.note ? `<div class="nt">${esc(b.note)}</div>` : ''}<div class="nt mono">${esc(b.code || '')}</div></td>
+          <td>${b.note ? `<div class="nt">${esc(b.note)}</div>` : ''}<div class="nt mono">${esc(b.code || '')}</div>${b.calendarEventId ? '<div class="nt">已加入行事曆</div>' : ''}</td>
           <td class="ac">${S.confirm === k
             ? `<span class="confirm">取消這筆？<button type="button" class="btn danger small" data-act="bk-cancel" data-id="${esc(b.id)}">確定取消</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
             : `<button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">取消預約</button>`}</td></tr>`;
@@ -269,9 +285,9 @@ async function saveAdmins(list, okMsg) {
 function startData() {
   if (S.unsub) S.unsub();
   S.unsub = store.subscribeAdmin(st => {
-    if (!(st.got.staff && st.got.bookings && st.got.admins)) return;
+    if (!(st.got.staff && st.got.bookings && st.got.admins && st.got.calendars)) return;
     const first = !S.data;
-    S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [] };
+    S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [], calendars: st.calendars || {}, calendarsUnavailable: !!st.calendarsUnavailable };
     if (first) render(); else onData();
   }, err => { S.loadErr = U.errMsg(err); if (!S.data) render(); else U.toast(S.loadErr); });
 }
@@ -329,7 +345,7 @@ document.addEventListener('click', async e => {
     case 'ed-del-closed': readEditor(); S.draft.closedDates = S.draft.closedDates.filter(c => c !== b.dataset.v); renderEditor(); break;
     case 'ed-delete':
       b.disabled = true;
-      try { await store.deleteStaff(S.editingId); S.editingId = null; S.draft = null; S.confirm = null; U.toast('已刪除人員'); }
+      try { const delId = S.editingId; await store.deleteStaff(delId); if (!S.data.calendarsUnavailable && (S.data.calendars || {})[delId]) await store.saveCalendar(delId, ''); S.editingId = null; S.draft = null; S.confirm = null; U.toast('已刪除人員'); }
       catch (err) { U.toast(U.errMsg(err)); }
       renderStaffList(); renderEditor(); break;
   }

@@ -126,7 +126,7 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--accent);outline-
 @media (max-width:480px){.box{padding:16px}}
 .box > h2{font:500 1.15rem/1.3 var(--f-display)}
 .lookup{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;max-width:460px}
-.lookup input,.addrow input{height:var(--ctl)}
+.lookup input,.addrow input,.g4 input{height:var(--ctl)}
 .lookup .btn,.addrow .btn{height:var(--ctl);padding-block:0}
 .blist{display:flex;flex-direction:column}
 .bitem{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:10px 0;border-top:1px solid var(--rule)}

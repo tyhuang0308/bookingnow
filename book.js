@@ -45,7 +45,10 @@ function renderStaffCards() {
 function renderDates() {
   const el = $('b-dates'), st = selStaff();
   if (!st) { el.innerHTML = '<p class="hint">先選擇研究人員</p>'; return; }
-  const t = today(), adv = Math.min(90, Math.max(1, num(st.advanceDays, 30))), end = addDays(t, adv - 1);
+  const t = today(), end = /^\d{4}-\d{2}-\d{2}$/.test(st.bookUntil || '')
+    ? st.bookUntil
+    : addDays(t, Math.min(90, Math.max(1, num(st.advanceDays, 30))) - 1);
+  if (end < t) { el.innerHTML = '<p class="hint">這位研究人員目前沒有開放預約的日期</p>'; return; }
   const minM = t.slice(0, 7), maxM = end.slice(0, 7);
   if (!S.month || S.month < minM) S.month = minM;
   if (S.month > maxM) S.month = maxM;

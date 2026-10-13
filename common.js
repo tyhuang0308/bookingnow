@@ -162,7 +162,7 @@ function firebaseStore(needAuth) {
     catch (e) { if (e.code === 'permission-denied') return false; throw e; }
   };
   S.subscribeAdmin = function (cb, onErr) {
-    const st = { staff: [], bookings: [], admins: [], got: {} };
+    const st = { staff: [], bookings: [], admins: [], calendars: {}, calendarsUnavailable: false, got: {} };
     const unsubs = []; let dead = false;
     const emit = k => { st.got[k] = true; cb(st); };
     ready.then(() => {
@@ -170,12 +170,17 @@ function firebaseStore(needAuth) {
       unsubs.push(F.db.collection('staff').onSnapshot(s => { st.staff = docs(s); emit('staff'); }, onErr));
       unsubs.push(F.db.collection('bookings').where('date', '>=', U.addDays(U.today(), -14)).onSnapshot(s => { st.bookings = docs(s); emit('bookings'); }, onErr));
       unsubs.push(F.db.doc('config/admins').onSnapshot(s => { st.admins = (s.exists && s.data().emails) || []; emit('admins'); }, onErr));
+      // 研究人員的行事曆帳號（只有後台看得到）；安全規則還沒更新時不影響其他功能
+      unsubs.push(F.db.doc('private/calendars').onSnapshot(
+        s => { st.calendars = s.exists ? s.data() : {}; st.calendarsUnavailable = false; emit('calendars'); },
+        () => { st.calendars = {}; st.calendarsUnavailable = true; emit('calendars'); }));
     });
     return () => { dead = true; unsubs.forEach(f => f()); };
   };
   S.saveStaff = async (id, data) => { await ready; await F.db.doc('staff/' + id).set(data); };
   S.deleteStaff = async id => { await ready; await F.db.doc('staff/' + id).delete(); };
   S.saveAdmins = async emails => { await ready; await F.db.doc('config/admins').set({ emails }); };
+  S.saveCalendar = async (staffId, email) => { await ready; await F.db.doc('private/calendars').set({ [staffId]: email || F.FV.delete() }, { merge: true }); };
   S.cancelBooking = async function (b) {
     await ready;
     const batch = F.db.batch();
@@ -192,7 +197,7 @@ function firebaseStore(needAuth) {
 
 /* ================= 預覽模式（範例資料，只存在這個瀏覽器） ================= */
 function demoStore() {
-  const KEY = 'booking-demo-v3';
+  const KEY = 'booking-demo-v5';
   const subs = new Set();
   let db = load(), user = null;
   const authSubs = new Set();
@@ -202,11 +207,12 @@ function demoStore() {
   function seed() {
     const wk = () => [{ s: '09:00', e: '12:00' }, { s: '14:00', e: '17:00' }];
     const d = {
-      v: 3,
+      v: 5,
       admins: ['teacher.chen@example.com'],
+      calendars: { demolin: 'lin.researcher@gmail.com' },
       staff: [
-        { id: 'demolin', name: '林老師（範例）', role: '職能治療個別課', color: COLORS[0], duration: 50, buffer: 10, advanceDays: 21, notice: 12, active: true, order: 1, weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [{ s: '09:00', e: '12:00' }], 0: [] }, closedDates: [] },
-        { id: 'demochen', name: '陳老師（範例）', role: '感覺統合團體課', color: COLORS[1], duration: 90, buffer: 30, advanceDays: 28, notice: 24, active: true, order: 2, weekly: { 1: [], 2: [{ s: '14:00', e: '18:00' }], 3: [], 4: [{ s: '14:00', e: '18:00' }], 5: [], 6: [{ s: '09:00', e: '13:00' }], 0: [] }, closedDates: [] }
+        { id: 'demolin', name: '林老師（範例）', role: '職能治療個別課', color: COLORS[0], duration: 50, buffer: 10, bookUntil: U.addDays(U.today(), 20), notice: 12, active: true, order: 1, weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [{ s: '09:00', e: '12:00' }], 0: [] }, closedDates: [] },
+        { id: 'demochen', name: '陳老師（範例）', role: '感覺統合團體課', color: COLORS[1], duration: 90, buffer: 30, bookUntil: U.addDays(U.today(), 27), notice: 24, active: true, order: 2, weekly: { 1: [], 2: [{ s: '14:00', e: '18:00' }], 3: [], 4: [{ s: '14:00', e: '18:00' }], 5: [], 6: [{ s: '09:00', e: '13:00' }], 0: [] }, closedDates: [] }
       ],
       bookings: []
     };
@@ -222,7 +228,7 @@ function demoStore() {
     return d;
   }
   function load() {
-    try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.v === 3) return v; } catch (e) { /* 無法使用瀏覽器儲存 */ }
+    try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.v === 5) return v; } catch (e) { /* 無法使用瀏覽器儲存 */ }
     const s = seed(); try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* 略過 */ }
     return s;
   }
@@ -260,10 +266,11 @@ function demoStore() {
   S.signIn = () => { user = { email: 'you@example.com' }; authSubs.forEach(f => f(user)); return later(); };
   S.signOut = () => { user = null; authSubs.forEach(f => f(null)); return later(); };
   S.checkAdmin = () => later(true);
-  S.subscribeAdmin = cb => watch(() => cb(clone({ staff: db.staff, bookings: db.bookings, admins: db.admins, got: { staff: true, bookings: true, admins: true } })));
+  S.subscribeAdmin = cb => watch(() => cb(clone({ staff: db.staff, bookings: db.bookings, admins: db.admins, calendars: db.calendars || {}, calendarsUnavailable: false, got: { staff: true, bookings: true, admins: true, calendars: true } })));
   S.saveStaff = (id, data) => { const i = db.staff.findIndex(s => s.id === id); const o = Object.assign({ id }, clone(data)); if (i >= 0) db.staff[i] = o; else db.staff.push(o); save(); return later(); };
   S.deleteStaff = id => { db.staff = db.staff.filter(s => s.id !== id); save(); return later(); };
   S.saveAdmins = emails => { db.admins = emails.slice(); save(); return later(); };
+  S.saveCalendar = (staffId, email) => { db.calendars = db.calendars || {}; if (email) db.calendars[staffId] = email; else delete db.calendars[staffId]; save(); return later(); };
   S.cancelBooking = b => { const x = db.bookings.find(y => y.id === b.id); if (x) { x.status = 'cancelled'; x.cancelledBy = 'admin'; } save(); return later(); };
   return S;
 }

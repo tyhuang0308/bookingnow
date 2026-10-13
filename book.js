@@ -5,7 +5,7 @@ const { $, esc, fmt, dLabel, today, color, num, WD, ORDER, addDays, parseD } = U
 const store = U.createStore(false);
 const S = {
   pub: { staff: [], slots: [], rooms: {} }, loaded: false, loadErr: '',
-  sel: { staffId: null, date: null, start: null }, month: null, form: { name: '', phone: '', email: '', note: '' },
+  sel: { staffId: null, date: null, start: null }, month: null, form: { name: '', round: '', phone: '', email: '', note: '' },
   done: null, busy: false, device: [], found: null, confirm: null
 };
 
@@ -102,9 +102,13 @@ function renderForm() {
     <div class="summary"><span class="dot" style="background:${color(st.color)}"></span><b>${esc(st.name)}</b><span class="when">${dLabel(S.sel.date)} ${fmt(S.sel.start)}</span></div>
     <div class="g2">
       <label class="field"><span>孩子姓名<b class="req" aria-hidden="true">*</b></span><input type="text" id="c-name" data-cf="name" autocomplete="off" maxlength="40" required value="${esc(S.form.name)}"></label>
-      <label class="field"><span>聯絡電話<b class="req" aria-hidden="true">*</b></span><input type="tel" id="c-phone" data-cf="phone" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="0912345678" required value="${esc(S.form.phone)}"></label>
+      <fieldset class="field"><legend>第幾次評估<b class="req" aria-hidden="true">*</b></legend>
+        <div class="seg" role="radiogroup">${[1, 2, 3].map(n => `<label><input type="radio" name="c-round" id="c-round-${n}" data-cf="round" value="${n}" ${String(S.form.round) === String(n) ? 'checked' : ''}><span>第${n}次</span></label>`).join('')}</div></fieldset>
     </div>
-    <label class="field"><span>Email<b class="req" aria-hidden="true">*</b></span><input type="email" id="c-email" data-cf="email" autocomplete="email" maxlength="100" placeholder="name@gmail.com" required value="${esc(S.form.email)}"></label>
+    <div class="g2">
+      <label class="field"><span>聯絡電話<b class="req" aria-hidden="true">*</b></span><input type="tel" id="c-phone" data-cf="phone" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="0912345678" required value="${esc(S.form.phone)}"></label>
+      <label class="field"><span>Email<b class="req" aria-hidden="true">*</b></span><input type="email" id="c-email" data-cf="email" autocomplete="email" maxlength="100" placeholder="name@gmail.com" required value="${esc(S.form.email)}"></label>
+    </div>
     <p class="hint"><b class="req">*</b> 為必填</p>
     <p class="err" id="c-err" role="alert"></p>
     <div><button type="submit" class="btn primary" id="c-submit">確認預約</button></div>
@@ -122,8 +126,9 @@ const EMAIL_RE = /^[a-z0-9](?:[a-z0-9._%+-]{0,62}[a-z0-9])?@(?:gmail\.com|yahoo\
 
 async function submitBooking() {
   const st = selStaff(), err = $('c-err'), btn = $('c-submit');
-  const f = { name: S.form.name.trim(), phone: mobile(S.form.phone), email: S.form.email.trim().toLowerCase(), note: '' };
+  const f = { name: S.form.name.trim(), round: Number(S.form.round) || 0, phone: mobile(S.form.phone), email: S.form.email.trim().toLowerCase(), note: '' };
   if (!f.name) { err.textContent = '請填寫孩子姓名。'; $('c-name').focus(); return; }
+  if (!(f.round >= 1 && f.round <= 3)) { err.textContent = '請選擇第幾次評估'; $('c-round-1').focus(); return; }
   if (!S.form.phone.trim()) { err.textContent = '請填寫聯絡電話。'; $('c-phone').focus(); return; }
   if (!f.phone) { err.textContent = '聯絡電話格式錯誤，請輸入09開頭的10碼手機號碼，例如0912345678'; $('c-phone').focus(); return; }
   if (!f.email) { err.textContent = '請填寫 Email。'; $('c-email').focus(); return; }
@@ -132,8 +137,8 @@ async function submitBooking() {
   if (!sl || !sl.ok) { err.textContent = '這個時段剛被預約走了，請選擇其他時段。'; renderTimes(); return; }
   err.textContent = ''; btn.disabled = true; btn.textContent = '送出中…'; S.busy = true;
   try {
-    const r = await store.book({ staff: st, date: S.sel.date, start: sl.start, end: sl.end, sameDay: S.pub.slots.filter(x => x.date === S.sel.date), name: f.name, phone: f.phone, email: f.email, note: f.note });
-    S.busy = false; S.done = r; S.sel.start = null; S.form.note = '';
+    const r = await store.book({ staff: st, date: S.sel.date, start: sl.start, end: sl.end, sameDay: S.pub.slots.filter(x => x.date === S.sel.date), name: f.name, round: f.round, phone: f.phone, email: f.email, note: f.note });
+    S.busy = false; S.done = r; S.sel.start = null; S.form.note = ''; S.form.round = '';
     S.device.push({ code: r.code, staffName: r.staffName, date: r.date, start: r.start, end: r.end }); saveDevice();
     renderForm(); renderTimes(); renderDates(); renderDevice();
     $('b-form').scrollIntoView({ block: 'center', behavior: 'smooth' });

@@ -71,6 +71,14 @@ function untilOf(s) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(s.bookUntil || '')) return s.bookUntil;
   return U.addDays(today(), Math.min(90, Math.max(1, num(s.advanceDays, 30))) - 1);
 }
+function leaveChips(d) {
+  const items = d.closedDates.map(c => ({ d: c, all: true })).concat(d.closedTimes.map(x => Object.assign({ all: false }, x)))
+    .sort((a, b) => a.d.localeCompare(b.d) || (a.all ? -1 : b.all ? 1 : toMin(a.s) - toMin(b.s)));
+  if (!items.length) return '<span class="hint">沒有設定休假。可以選整天，或只選某幾個小時；休假時間內不會開放預約</span>';
+  return items.map(x => x.all
+    ? `<span class="cchip">${dLabel(x.d)} 整天<button type="button" data-act="ed-del-closed" data-v="${esc(x.d)}" aria-label="移除 ${dLabel(x.d)} 整天休假">×</button></span>`
+    : `<span class="cchip">${dLabel(x.d)} ${esc(x.s)}–${esc(x.e)}<button type="button" data-act="ed-del-closedt" data-d="${esc(x.d)}" data-s="${esc(x.s)}" data-e="${esc(x.e)}" aria-label="移除 ${dLabel(x.d)} ${esc(x.s)} 休假">×</button></span>`).join('');
+}
 function shortDate(s) { const d = U.parseD(s); return (d.getMonth() + 1) + '/' + d.getDate(); }
 function staffMeta(s) {
   const days = ORDER.filter(d => (s.weekly && s.weekly[d] || []).length).map(d => WD[d]).join('');
@@ -86,11 +94,11 @@ function renderStaffList() {
 function blankDraft() {
   const used = aStaff().map(s => s.color), wk = () => [{ s: '09:00', e: '12:00' }, { s: '14:00', e: '18:00' }];
   return { name: '', role: '', color: COLORS.find(c => !used.includes(c)) || COLORS[0], duration: 60, buffer: 0, bookUntil: U.addDays(today(), 29), notice: 2, active: true,
-    weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [], 0: [] }, closedDates: [], calEmail: '' };
+    weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [], 0: [] }, closedDates: [], closedTimes: [], calEmail: '' };
 }
 function cloneStaff(s) {
   const w = {}; for (const d of ORDER) w[d] = ((s.weekly && s.weekly[d]) || []).map(r => ({ s: r.s, e: r.e }));
-  return { name: s.name || '', role: s.role || '', color: color(s.color), duration: num(s.duration, 60), buffer: num(s.buffer, 0), bookUntil: untilOf(s), notice: num(s.notice, 0), active: s.active !== false, weekly: w, closedDates: (s.closedDates || []).slice(), calEmail: (S.data && S.data.calendars && S.data.calendars[s.id]) || '' };
+  return { name: s.name || '', role: s.role || '', color: color(s.color), duration: num(s.duration, 60), buffer: num(s.buffer, 0), bookUntil: untilOf(s), notice: num(s.notice, 0), active: s.active !== false, weekly: w, closedDates: (s.closedDates || []).slice(), closedTimes: (s.closedTimes || []).map(x => ({ d: x.d, s: x.s, e: x.e })), calEmail: (S.data && S.data.calendars && S.data.calendars[s.id]) || '' };
 }
 function renderEditor() {
   const el = $('a-editor'), d = S.draft; if (!el) return;
@@ -128,8 +136,15 @@ function renderEditor() {
       const rs = d.weekly[day] || [], on = rs.length > 0;
       return `<div class="wrow ${on ? '' : 'off'}"><label class="wday"><input type="checkbox" class="day-on" id="f-day-${day}" data-day="${day}" ${on ? 'checked' : ''}>週${WD[day]}</label><div class="ranges">${on ? rs.map((r, i) => `<div class="range"><input type="time" id="f-r-${day}-${i}-s" data-day="${day}" data-k="s" step="300" value="${esc(r.s)}" aria-label="週${WD[day]}第 ${i + 1} 段開始"><span>–</span><input type="time" id="f-r-${day}-${i}-e" data-day="${day}" data-k="e" step="300" value="${esc(r.e)}" aria-label="週${WD[day]}第 ${i + 1} 段結束"><button type="button" class="icon" data-act="ed-del-range" data-day="${day}" data-i="${i}" aria-label="刪除這段">×</button></div>`).join('') + `<button type="button" class="linkbtn" data-act="ed-add-range" data-day="${day}">＋ 加一段</button>` : '<span class="hint">不開放</span>'}</div></div>`;
     }).join('')}</div></section>
-    <section><h3>休假日</h3><div class="closed-row"><input type="date" id="f-closed-new" min="${t}"><button type="button" class="btn ghost small" data-act="ed-add-closed">加入休假日</button></div>
-      <div class="chips">${d.closedDates.length ? d.closedDates.slice().sort().map(c => `<span class="cchip">${dLabel(c)}<button type="button" data-act="ed-del-closed" data-v="${esc(c)}" aria-label="移除 ${dLabel(c)}">×</button></span>`).join('') : '<span class="hint">沒有設定休假日。休假日當天不會開放預約。</span>'}</div></section>
+    <section><h3>休假</h3>
+      <div class="closed-row">
+        <input type="date" id="f-closed-new" min="${t}" aria-label="休假日期">
+        <label class="switch"><input type="checkbox" id="f-closed-all" ${S.leaveAll === false ? '' : 'checked'}> 整天</label>
+        <span class="range" id="f-closed-times" ${S.leaveAll === false ? '' : 'hidden'}><input type="time" id="f-closed-s" step="300" value="09:00" aria-label="休假開始"><span>–</span><input type="time" id="f-closed-e" step="300" value="12:00" aria-label="休假結束"></span>
+        <button type="button" class="btn ghost small" data-act="ed-add-closed">加入休假</button>
+      </div>
+      <p class="err" id="closed-err" role="alert"></p>
+      <div class="chips">${leaveChips(d)}</div></section>
     <section><h3>時段預覽</h3><div id="ed-preview"></div></section>
     <p class="err" id="ed-err" role="alert"></p>
     <div class="actions">
@@ -201,6 +216,7 @@ async function saveStaff() {
     duration: Math.round(d.duration), buffer: Math.max(0, Math.round(d.buffer)),
     bookUntil: d.bookUntil, notice: Math.max(0, Math.round(d.notice)),
     active: !!d.active, weekly, closedDates: d.closedDates.filter(c => c >= today()).sort(),
+    closedTimes: d.closedTimes.filter(x => x.d >= today()).sort((a, b) => a.d.localeCompare(b.d) || toMin(a.s) - toMin(b.s)),
     order: ex ? num(ex.order, Date.now()) : Date.now(), updatedAt: Date.now()
   };
   const btn = $('ed-save'); btn.disabled = true; btn.textContent = '儲存中…';
@@ -238,7 +254,7 @@ function renderBookings() {
     const cls = ['bkc-day', d === t ? 'is-today' : '', d < t ? 'is-past' : ''].join(' ');
     cal += `<button type="button" class="${cls}" data-act="bk-day" data-d="${d}" aria-pressed="${d === S.bkDay}" aria-label="${dLabel(d)}，${list.length} 筆預約">
       <span class="bkc-top"><span class="bkc-n">${i}</span>${list.length ? `<span class="bkc-count">${list.length}</span>` : ''}</span>
-      <span class="bkc-items">${list.slice(0, 3).map(b => `<span class="bkc-item"><span class="dot" style="background:${sColor(b.staffId)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}</span>`).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 筆</span>` : ''}${ex ? '<span class="bkc-more">已加開場地</span>' : ''}</span>
+      <span class="bkc-items">${list.slice(0, 3).map(b => `<span class="bkc-item"><span class="dot" style="background:${sColor(b.staffId)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}${b.round || ''}</span>`).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 筆</span>` : ''}${ex ? '<span class="bkc-more">已加開場地</span>' : ''}</span>
     </button>`;
   }
 
@@ -254,9 +270,9 @@ function renderBookings() {
       const sync = b.calendarEventId ? '<div class="nt">已加入行事曆</div>' : (b.calendarError === 'no-access' ? '<div class="nt warn">行事曆未同步：請確認研究人員已共用行事曆</div>' : '');
       const reopenBtn = past ? '' : (covered(b)
         ? `<button type="button" class="btn ghost small" data-act="unreopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}">取消加開</button>`
-        : `<button type="button" class="btn ghost small" data-act="reopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}">重新開放此時段</button>`);
+        : `<button type="button" class="btn ghost small" data-act="reopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}" title="這個時段借到其他空間時，讓其他研究人員的同時段可以再被預約">重新開放此時段</button>`);
       detail += `<tr><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
-        <td><b>${esc(b.name)}</b><div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
+        <td><b>${esc(b.name)}</b>${b.round ? `<span class="tag">第${b.round}次</span>` : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
         <td><div class="nt mono">${esc(b.code || '')}</div>${sync}</td>
         <td class="ac">${S.confirm === k
           ? `<span class="confirm">取消這筆？<button type="button" class="btn danger small" data-act="bk-cancel" data-id="${esc(b.id)}">確定取消</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
@@ -284,8 +300,8 @@ function renderBookings() {
 function exportCSV() {
   const list = (S.data.bookings || []).slice().sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const head = ['日期', '開始', '結束', '研究人員', '孩子姓名', '電話', 'Email', '備註', '狀態', '預約代碼'];
-  const lines = [head.map(q).join(',')].concat(list.map(b => [b.date, fmt(b.start), fmt(b.end), b.staffName, b.name, b.phone, b.email, b.note, b.status === 'booked' ? '已預約' : '已取消', b.code].map(q).join(',')));
+  const head = ['日期', '開始', '結束', '研究人員', '孩子姓名', '第幾次評估', '電話', 'Email', '備註', '狀態', '預約代碼'];
+  const lines = [head.map(q).join(',')].concat(list.map(b => [b.date, fmt(b.start), fmt(b.end), b.staffName, b.name, b.round || '', b.phone, b.email, b.note, b.status === 'booked' ? '已預約' : '已取消', b.code].map(q).join(',')));
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = '預約紀錄-' + today() + '.csv';
@@ -392,8 +408,23 @@ document.addEventListener('click', async e => {
       rs.push({ s: fmt(s), e: fmt(Math.min(s + 180, 23 * 60 + 55)) }); renderEditor(); break;
     }
     case 'ed-del-range': readEditor(); S.draft.weekly[b.dataset.day].splice(Number(b.dataset.i), 1); renderEditor(); break;
-    case 'ed-add-closed': { readEditor(); const v = $('f-closed-new').value; if (v && !S.draft.closedDates.includes(v)) S.draft.closedDates.push(v); renderEditor(); break; }
+    case 'ed-add-closed': {
+      readEditor();
+      const v = $('f-closed-new').value, all = $('f-closed-all').checked, er = $('closed-err');
+      if (!v) { er.textContent = '請先選擇休假日期'; break; }
+      if (all) {
+        if (!S.draft.closedDates.includes(v)) S.draft.closedDates.push(v);
+        S.draft.closedTimes = S.draft.closedTimes.filter(x => x.d !== v); // 整天休假已包含當天的部分時段
+      } else {
+        const s = $('f-closed-s').value, e = $('f-closed-e').value;
+        if (!(toMin(s) < toMin(e))) { er.textContent = '休假的結束時間要晚於開始時間'; break; }
+        if (S.draft.closedDates.includes(v)) { er.textContent = '這一天已經設定整天休假'; break; }
+        if (!S.draft.closedTimes.some(x => x.d === v && x.s === s && x.e === e)) S.draft.closedTimes.push({ d: v, s, e });
+      }
+      renderEditor(); break;
+    }
     case 'ed-del-closed': readEditor(); S.draft.closedDates = S.draft.closedDates.filter(c => c !== b.dataset.v); renderEditor(); break;
+    case 'ed-del-closedt': readEditor(); S.draft.closedTimes = S.draft.closedTimes.filter(x => !(x.d === b.dataset.d && x.s === b.dataset.s && x.e === b.dataset.e)); renderEditor(); break;
     case 'ed-delete':
       b.disabled = true;
       try { const delId = S.editingId; await store.deleteStaff(delId); if (!S.data.calendarsUnavailable && (S.data.calendars || {})[delId]) await store.saveCalendar(delId, ''); S.editingId = null; S.draft = null; S.confirm = null; U.toast('已刪除人員'); }
@@ -405,6 +436,7 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.classList && t.classList.contains('day-on')) { readEditor(); const d = t.dataset.day; if (t.checked && !S.draft.weekly[d].length) S.draft.weekly[d] = [{ s: '09:00', e: '12:00' }]; renderEditor(); return; }
   if (t.id === 'a-filter') { S.filter = t.value; renderBookings(); }
+  if (t.id === 'f-closed-all') { S.leaveAll = t.checked; $('f-closed-times').hidden = t.checked; }
 });
 document.addEventListener('input', e => {
   const t = e.target;

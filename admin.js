@@ -5,7 +5,8 @@ const { $, esc, fmt, dLabel, today, color, num, WD, ORDER, COLORS, toMin } = U;
 const store = U.createStore(true);
 const S = {
   user: undefined, isAdmin: null, data: null, unsub: null, loadErr: '',
-  atab: 'staff', editingId: null, draft: null, confirm: null, filter: 'all', bkMonth: null, bkDay: null
+  atab: 'staff', editingId: null, draft: null, confirm: null, filter: 'all', bkMonth: null, bkDay: null,
+  bkForm: null, bkDone: null, lineCode: null
 };
 const aStaff = () => ((S.data && S.data.staff) || []).filter(s => s.name).sort((a, b) => num(a.order, 0) - num(b.order, 0));
 const GLOGO = '<svg class="gmark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
@@ -60,8 +61,8 @@ function render() {
 function onData() {
   if (!$('a-staff')) { render(); return; }
   renderTop();
-  if (S.atab === 'staff') { renderStaffList(); if (!S.draft) renderEditor(); }
-  if (S.atab === 'bookings') renderBookings();
+  if (S.atab === 'staff') { renderStaffList(); if (!S.draft) renderEditor(); else if ($('line-st')) $('line-st').innerHTML = lineStatus(S.editingId); }
+  if (S.atab === 'bookings') { if (S.bkForm) readBkForm(); renderBookings(); }
   if (S.atab === 'accounts') renderAccounts();
 }
 
@@ -78,6 +79,14 @@ function leaveChips(d) {
   return items.map(x => x.all
     ? `<span class="cchip">${dLabel(x.d)} 整天<button type="button" data-act="ed-del-closed" data-v="${esc(x.d)}" aria-label="移除 ${dLabel(x.d)} 整天休假">×</button></span>`
     : `<span class="cchip">${dLabel(x.d)} ${esc(x.s)}–${esc(x.e)}<button type="button" data-act="ed-del-closedt" data-d="${esc(x.d)}" data-s="${esc(x.s)}" data-e="${esc(x.e)}" aria-label="移除 ${dLabel(x.d)} ${esc(x.s)} 休假">×</button></span>`).join('');
+}
+function lineStatus(id) {
+  const n = ((S.data.lineStaff || {})[id] || []).length;
+  const code = S.lineCode && S.lineCode.staffId === id ? S.lineCode.code : '';
+  return `<span>${n ? `已綁定 <b>${n}</b> 個LINE帳號` : '還沒有綁定LINE帳號'}</span>
+    <button type="button" class="btn ghost small" data-act="line-bind">${code ? '重新產生綁定碼' : '產生綁定碼'}</button>
+    ${n ? (S.confirm === 'line-unbind' ? `<span class="confirm">解除後就收不到通知，確定？<button type="button" class="btn danger small" data-act="line-unbind">解除綁定</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>` : '<button type="button" class="btn ghost small" data-act="ask" data-k="line-unbind">解除全部綁定</button>') : ''}
+    ${code ? `<p class="notice" style="flex-basis:100%">請用要接收通知的LINE帳號，傳送 <b class="mono">綁定 ${esc(code)}</b> 給LINE官方帳號。每組綁定碼只能用一次，24小時內有效；同一位研究人員可以綁定多個LINE帳號</p>` : ''}`;
 }
 function shortDate(s) { const d = U.parseD(s); return (d.getMonth() + 1) + '/' + d.getDate(); }
 function staffMeta(s) {
@@ -145,6 +154,10 @@ function renderEditor() {
       </div>
       <p class="err" id="closed-err" role="alert"></p>
       <div class="chips">${leaveChips(d)}</div></section>
+    <section><h3>LINE通知</h3>
+      ${editing ? `<p class="hint">有新預約、修改或取消時，傳LINE訊息通知這位研究人員。需先完成說明文件「LINE通知研究人員」的設定</p>
+      <div class="line-st" id="line-st">${lineStatus(S.editingId)}</div>` : '<p class="hint">儲存這位研究人員後，就可以設定LINE通知</p>'}
+    </section>
     <section><h3>時段預覽</h3><div id="ed-preview"></div></section>
     <p class="err" id="ed-err" role="alert"></p>
     <div class="actions">
@@ -261,7 +274,11 @@ function renderBookings() {
   // 選取日期的明細
   const day = S.bkDay, list = bookedOn(day), extras = extrasOn(day);
   const covered = b => extras.some(x => x.s <= b.start && b.end <= x.e);
-  let detail = `<div class="bk-day"><h3>${dLabel(day)}${day === t ? ' · 今天' : ''}</h3>`;
+  let detail = `<div class="bk-day"><div class="day-actions"><h3>${dLabel(day)}${day === t ? ' · 今天' : ''}</h3>${day >= t ? '<button type="button" class="btn primary small" data-act="bf-new">＋ 新增預約</button>' : ''}</div>`;
+  if (S.bkDone) detail += `<div class="bk-done" role="status"><b>已${S.bkDone.edit ? '修改' : '新增'}預約：${esc(S.bkDone.name)}　${esc(S.bkDone.staffName)} ${dLabel(S.bkDone.date)} ${fmt(S.bkDone.start)}</b>
+    ${S.bkDone.code ? `<span>預約代碼 <b class="mono">${esc(S.bkDone.code)}</b>（請告知家長，家長可用這組代碼查詢、修改或取消預約）</span>` : ''}
+    <div><button type="button" class="btn ghost small" data-act="bf-done-close">關閉</button></div></div>`;
+  if (S.bkForm) detail += bkFormHTML();
   if (!list.length) detail += '<p class="hint" style="padding-top:10px">這一天沒有預約</p>';
   else {
     detail += '<div class="tw"><table><tbody>';
@@ -272,11 +289,11 @@ function renderBookings() {
         ? `<button type="button" class="btn ghost small" data-act="unreopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}">取消加開</button>`
         : `<button type="button" class="btn ghost small" data-act="reopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}">重新開放此時段</button>`);
       detail += `<tr><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
-        <td><b>${esc(b.name)}</b>${b.round ? `<span class="tag">第${b.round}次</span>` : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
+        <td><b>${esc(b.name)}</b>${b.round ? `<span class="tag">第${b.round}次</span>` : ''}${b.createdBy ? '<span class="tag">後台代約</span>' : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
         <td><div class="nt mono">${esc(b.code || '')}</div>${sync}</td>
         <td class="ac">${S.confirm === k
           ? `<span class="confirm">取消這筆？<button type="button" class="btn danger small" data-act="bk-cancel" data-id="${esc(b.id)}">確定取消</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
-          : `<span class="acts">${reopenBtn}${past ? '' : `<button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">取消預約</button>`}</span>`}</td></tr>`;
+          : `<span class="acts">${reopenBtn}${past ? '' : `<button type="button" class="btn ghost small" data-act="bf-edit" data-id="${esc(b.id)}">修改</button><button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">取消預約</button>`}</span>`}</td></tr>`;
     }
     detail += '</tbody></table></div>';
   }
@@ -297,11 +314,90 @@ function renderBookings() {
     <div class="bkc">${cal}</div>
     ${detail}`;
 }
+/* ---------- 後台新增／修改預約 ---------- */
+function adminSlots(excludeId) {
+  return (S.data.bookings || []).filter(b => b.status === 'booked' && b.id !== excludeId)
+    .map(b => ({ staffId: b.staffId, date: b.date, start: b.start, end: b.end, bookingId: b.id }));
+}
+/** 後台可選的時段：不受「最晚需提前」限制，但不能選已經過去或被佔用的時段 */
+function adminChoices(st, date, excludeId) {
+  if (!st || !date) return [];
+  const now = Date.now(), base = U.parseD(date).getTime();
+  return U.available(st, date, adminSlots(excludeId), S.data.rooms).map(x => Object.assign({}, x, { ok: !x.taken && base + x.start * 60000 > now }));
+}
+function bkFormHTML() {
+  const f = S.bkForm, staff = aStaff(), st = staff.find(s => s.id === f.staffId);
+  const list = adminChoices(st, f.date, f.id).filter(x => U.parseD(f.date).getTime() + x.start * 60000 > Date.now());
+  const slotsHTML = !st ? '<p class="hint">先選擇研究人員</p>' : !f.date ? '<p class="hint">先選擇日期</p>'
+    : !list.length ? '<p class="hint">這一天沒有可預約的時段</p>'
+    : '<div class="slots">' + list.map(x => `<button type="button" class="slot" data-act="bf-slot" data-s="${x.start}" ${x.ok ? '' : 'disabled'} aria-pressed="${x.start === f.start}">${fmt(x.start)}</button>`).join('') + '</div>';
+  return `<form id="bk-form" class="bk-form" novalidate>
+    <h4>${f.id ? '修改預約' : '新增預約（後台代約）'}</h4>
+    <div class="g2">
+      <label class="field"><span>研究人員</span><select id="bf-staff"><option value="">請選擇</option>${staff.map(s => `<option value="${esc(s.id)}" ${s.id === f.staffId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+      <label class="field"><span>日期</span><input type="date" id="bf-date" min="${today()}" value="${esc(f.date || '')}"></label>
+    </div>
+    <div class="field"><span>時段（不受「最晚需提前」限制）</span>${slotsHTML}</div>
+    <div class="g2">
+      <label class="field"><span>孩子姓名<b class="req">*</b></span><input type="text" id="bf-name" maxlength="40" value="${esc(f.name || '')}"></label>
+      <div class="field"><span>第幾次評估<b class="req">*</b></span><div class="seg">${[1, 2, 3].map(n => `<label><input type="radio" name="bf-round" id="bf-round-${n}" value="${n}" ${Number(f.round) === n ? 'checked' : ''}><span>第${n}次</span></label>`).join('')}</div></div>
+    </div>
+    <div class="g2">
+      <label class="field"><span>聯絡電話<b class="req">*</b></span><input type="tel" id="bf-phone" maxlength="20" value="${esc(f.phone || '')}"></label>
+      <label class="field"><span>Email（選填）</span><input type="email" id="bf-email" maxlength="100" value="${esc(f.email || '')}"></label>
+    </div>
+    <p class="err" id="bf-err" role="alert">${esc(f.err || '')}</p>
+    <div class="acts" style="justify-content:flex-start"><button type="submit" class="btn primary" id="bf-save">${f.id ? '儲存修改' : '新增預約'}</button><button type="button" class="btn ghost" data-act="bf-close">取消</button></div>
+  </form>`;
+}
+function readBkForm() {
+  const f = S.bkForm; if (!f || !$('bf-name')) return;
+  f.staffId = $('bf-staff').value; f.date = $('bf-date').value;
+  f.name = $('bf-name').value; f.phone = $('bf-phone').value; f.email = $('bf-email').value;
+  const r = document.querySelector('input[name="bf-round"]:checked'); f.round = r ? Number(r.value) : f.round;
+}
+async function saveBkForm() {
+  readBkForm();
+  const f = S.bkForm, st = aStaff().find(s => s.id === f.staffId), err = $('bf-err');
+  const name = (f.name || '').trim(), phone = String(f.phone || '').replace(/[\s.]/g, ''), email = (f.email || '').trim().toLowerCase();
+  const fail = m => { f.err = m; err.textContent = m; };
+  if (!st) return fail('請選擇研究人員');
+  if (!f.date) return fail('請選擇日期');
+  const sl = adminChoices(st, f.date, f.id).find(x => x.start === f.start);
+  if (f.start == null || !sl) return fail('請選擇時段');
+  if (!sl.ok) return fail('這個時段已經被預約或已經過了，請選擇其他時段');
+  if (!name) return fail('請填寫孩子姓名');
+  if (!(f.round >= 1 && f.round <= 3)) return fail('請選擇第幾次評估');
+  if (!/^[0-9+()#-]{6,20}$/.test(phone)) return fail('請填寫正確的聯絡電話');
+  if (email && !/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(email)) return fail('Email格式不正確，不需要可以留空');
+  const btn = $('bf-save'); btn.disabled = true; btn.textContent = '儲存中…'; f.err = '';
+  const sameDay = adminSlots(f.id).filter(x => x.date === f.date);
+  try {
+    if (!f.id) {
+      const r = await store.book({ staff: st, date: f.date, start: sl.start, end: sl.end, sameDay, name, round: f.round, phone, email, note: '', createdBy: S.user.email });
+      S.bkDone = { code: r.code, name, staffName: st.name, date: f.date, start: sl.start };
+      U.toast('已新增預約，預約代碼 ' + r.code);
+    } else {
+      const b = (S.data.bookings || []).find(x => x.id === f.id);
+      if (!b || b.status !== 'booked') throw new Error('這筆預約已經取消了');
+      if (b.staffId !== st.id || b.date !== f.date || b.start !== sl.start) {
+        await store.moveBooking({ booking: { id: b.id, staffId: b.staffId, date: b.date, start: b.start, end: b.end, slotKey: b.slotKey, code: b.code }, staff: st, date: f.date, start: sl.start, end: sl.end, sameDay });
+      }
+      if (b.name !== name || Number(b.round) !== Number(f.round) || b.phone !== phone || (b.email || '') !== email) {
+        await store.updateBookingInfo(b.id, { name, round: Number(f.round), phone, email });
+      }
+      S.bkDone = { edit: true, name, staffName: st.name, date: f.date, start: sl.start };
+      U.toast('已修改預約');
+    }
+    S.bkForm = null; S.bkDay = f.date; S.bkMonth = f.date.slice(0, 7);
+  } catch (e) { f.err = U.errMsg(e); }
+  renderBookings();
+}
 function exportCSV() {
   const list = (S.data.bookings || []).slice().sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const head = ['日期', '開始', '結束', '研究人員', '孩子姓名', '第幾次評估', '電話', 'Email', '備註', '狀態', '預約代碼'];
-  const lines = [head.map(q).join(',')].concat(list.map(b => [b.date, fmt(b.start), fmt(b.end), b.staffName, b.name, b.round || '', b.phone, b.email, b.note, b.status === 'booked' ? '已預約' : '已取消', b.code].map(q).join(',')));
+  const head = ['日期', '開始', '結束', '研究人員', '孩子姓名', '第幾次評估', '電話', 'Email', '備註', '狀態', '預約代碼', '建立方式'];
+  const lines = [head.map(q).join(',')].concat(list.map(b => [b.date, fmt(b.start), fmt(b.end), b.staffName, b.name, b.round || '', b.phone, b.email, b.note, b.status === 'booked' ? '已預約' : '已取消', b.code, b.createdBy ? '後台代約' : '家長預約'].map(q).join(',')));
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = '預約紀錄-' + today() + '.csv';
@@ -342,7 +438,7 @@ function startData() {
   S.unsub = store.subscribeAdmin(st => {
     if (!(st.got.staff && st.got.bookings && st.got.admins && st.got.calendars && st.got.rooms)) return;
     const first = !S.data;
-    S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [], calendars: st.calendars || {}, calendarsUnavailable: !!st.calendarsUnavailable, rooms: st.rooms || {} };
+    S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [], calendars: st.calendars || {}, calendarsUnavailable: !!st.calendarsUnavailable, rooms: st.rooms || {}, lineStaff: st.lineStaff || {} };
     if (first) render(); else onData();
   }, err => { S.loadErr = U.errMsg(err); if (!S.data) render(); else U.toast(S.loadErr); });
 }
@@ -369,7 +465,7 @@ document.addEventListener('click', async e => {
       try { await store.signIn(); } catch (err) { S.loadErr = U.errMsg(err); render(); }
       break;
     case 'logout': await store.signOut(); break;
-    case 'atab': if (S.atab === 'staff') readEditor(); S.atab = b.dataset.v; S.confirm = null; render(); break;
+    case 'atab': if (S.atab === 'staff') readEditor(); if (S.bkForm) readBkForm(); S.atab = b.dataset.v; S.confirm = null; render(); break;
     case 'ask': S.confirm = b.dataset.k; rerenderConfirm(); break;
     case 'confirm-no': S.confirm = null; rerenderConfirm(); break;
     case 'export': exportCSV(); break;
@@ -377,7 +473,26 @@ document.addEventListener('click', async e => {
       const [y, m] = S.bkMonth.split('-').map(Number), d = new Date(y, m - 1 + Number(b.dataset.n), 1);
       S.bkMonth = d.getFullYear() + '-' + U.pad(d.getMonth() + 1); S.confirm = null; renderBookings(); break;
     }
-    case 'bk-day': S.bkDay = b.dataset.d; S.confirm = null; renderBookings(); break;
+    case 'bk-day': S.bkDay = b.dataset.d; S.confirm = null; if (S.bkForm && !S.bkForm.id) S.bkForm.date = b.dataset.d >= today() ? b.dataset.d : S.bkForm.date; renderBookings(); break;
+    case 'bf-new': S.bkDone = null; S.bkForm = { staffId: S.filter !== 'all' ? S.filter : '', date: S.bkDay >= today() ? S.bkDay : today(), start: null, round: 0 }; renderBookings(); $('bk-form').scrollIntoView({ block: 'center', behavior: 'smooth' }); break;
+    case 'bf-edit': {
+      const bk = (S.data.bookings || []).find(x => x.id === b.dataset.id); if (!bk) break;
+      S.bkDone = null; S.bkForm = { id: bk.id, staffId: bk.staffId, date: bk.date, start: bk.start, name: bk.name, round: Number(bk.round) || 0, phone: bk.phone, email: bk.email || '' };
+      renderBookings(); $('bk-form').scrollIntoView({ block: 'center', behavior: 'smooth' }); break;
+    }
+    case 'bf-slot': readBkForm(); S.bkForm.start = Number(b.dataset.s); S.bkForm.err = ''; renderBookings(); break;
+    case 'bf-close': S.bkForm = null; renderBookings(); break;
+    case 'bf-done-close': S.bkDone = null; renderBookings(); break;
+    case 'line-bind': {
+      b.disabled = true;
+      try { const code = await store.createLineBind(S.editingId); S.lineCode = { staffId: S.editingId, code }; }
+      catch (err) { U.toast(U.errMsg(err)); }
+      if ($('line-st')) $('line-st').innerHTML = lineStatus(S.editingId); break;
+    }
+    case 'line-unbind':
+      b.disabled = true;
+      try { await store.unbindLine(S.editingId); S.confirm = null; U.toast('已解除LINE綁定'); } catch (err) { U.toast(U.errMsg(err)); }
+      if ($('line-st')) $('line-st').innerHTML = lineStatus(S.editingId); break;
     case 'reopen': case 'unreopen': {
       const d = b.dataset.d, s = Number(b.dataset.s), en = Number(b.dataset.e), on = b.dataset.act === 'reopen';
       b.disabled = true;
@@ -436,17 +551,20 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.classList && t.classList.contains('day-on')) { readEditor(); const d = t.dataset.day; if (t.checked && !S.draft.weekly[d].length) S.draft.weekly[d] = [{ s: '09:00', e: '12:00' }]; renderEditor(); return; }
   if (t.id === 'a-filter') { S.filter = t.value; renderBookings(); }
+  if (t.id === 'bf-staff' || t.id === 'bf-date') { readBkForm(); S.bkForm.start = null; renderBookings(); }
   if (t.id === 'f-closed-all') { S.leaveAll = t.checked; $('f-closed-times').hidden = t.checked; }
 });
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.closest && t.closest('#ed-form')) { readEditor(); updatePreview(); $('ed-err').textContent = ''; return; }
   if (t.id === 'acct-new') $('acct-err').textContent = '';
+  if (t.closest && t.closest('#bk-form') && t.id !== 'bf-date') { readBkForm(); if (S.bkForm) S.bkForm.err = ''; const er = $('bf-err'); if (er) er.textContent = ''; }
 });
 document.addEventListener('submit', async e => {
   e.preventDefault();
   const id = e.target.id;
   if (id === 'ed-form') saveStaff();
+  if (id === 'bk-form') saveBkForm();
   if (id === 'acct-form') {
     const v = $('acct-new').value.trim().toLowerCase();
     if (!/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(v)) { $('acct-err').textContent = '請輸入完整的 Email，例如 researcher@gmail.com'; return; }

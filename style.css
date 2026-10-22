@@ -273,3 +273,16 @@ td .nt{color:var(--muted);font-size:.84rem;overflow-wrap:anywhere}
 .form .g2 input[type=text],.form .g2 input[type=tel],.form .g2 input[type=email],.seg span{height:42px;min-height:42px;box-sizing:border-box;margin:0}
 .seg span{padding:0 6px;line-height:1}
 .form .g2{align-items:start}
+
+/* 修改預約 */
+.moving{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;border:1px solid var(--mark);background:var(--surface);border-left:4px solid var(--mark);border-radius:var(--r);padding:12px 14px}
+.moving > div{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 260px}
+
+/* 後台：新增／修改預約 */
+.bk-form{display:flex;flex-direction:column;gap:14px;border:1px solid var(--accent);border-radius:var(--r);padding:14px;margin-top:12px;background:var(--surface)}
+.bk-form h4{margin:0;font-size:1rem;font-weight:500}
+.bk-form .g2 input,.bk-form .g2 select{height:42px}
+.bk-done{display:flex;flex-direction:column;gap:6px;border:1px solid var(--ok);background:var(--ok-soft);border-radius:var(--r);padding:12px 14px;margin-top:12px}
+.day-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.day-actions h3{border:0;padding:0}
+.line-st{display:flex;flex-wrap:wrap;align-items:center;gap:8px}

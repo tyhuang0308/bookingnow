@@ -6,12 +6,14 @@ const store = U.createStore(false);
 const S = {
   pub: { staff: [], slots: [], rooms: {} }, loaded: false, loadErr: '',
   sel: { staffId: null, date: null, start: null }, month: null, form: { name: '', round: '', phone: '', email: '', note: '' },
-  done: null, busy: false, device: [], found: null, confirm: null
+  done: null, busy: false, device: [], found: null, confirm: null, moving: null
 };
 
 const activeStaff = () => S.pub.staff.filter(s => s.active !== false && s.name).sort((a, b) => num(a.order, 0) - num(b.order, 0));
 const selStaff = () => activeStaff().find(s => s.id === S.sel.staffId) || null;
-const avail = (st, date) => U.available(st, date, S.pub.slots, S.pub.rooms);
+// 修改預約時，原本這筆預約佔用的時段要視為空的
+const pubSlots = () => S.moving ? S.pub.slots.filter(x => x.bookingId !== S.moving.bookingId) : S.pub.slots;
+const avail = (st, date) => U.available(st, date, pubSlots(), S.pub.rooms);
 
 /* 這台裝置預約過的代碼 */
 function loadDevice() { try { S.device = (JSON.parse(localStorage.getItem('booking-mine') || '[]') || []).filter(b => b && b.code && b.date >= today()); } catch (e) { S.device = []; } }
@@ -87,11 +89,22 @@ function renderForm() {
   const el = $('b-form'), st = selStaff();
   if (S.done) {
     const d = S.done;
-    el.innerHTML = `<div class="success" role="status"><h3>預約成功</h3>
-      <p><b>${esc(d.staffName)}</b>　<span class="when">${dLabel(d.date)} ${fmt(d.start)}</span></p>
-      <p>預約代碼</p><p class="code">${esc(d.code)}</p>
-      <p class="hint">請截圖或記下此預約代碼。需要查詢或取消時，可至下方「查詢或取消預約」輸入預約代碼即可</p>
+    el.innerHTML = `<div class="success" role="status"><h3>${d.moved ? '修改成功' : '預約成功'}</h3>
+      ${d.moved && d.from ? `<p class="hint">原本：${esc(d.from.staffName)} ${dLabel(d.from.date)} ${fmt(d.from.start)}</p>` : ''}
+      <p>${d.moved ? '新的時段：' : ''}<b>${esc(d.staffName)}</b>　<span class="when">${dLabel(d.date)} ${fmt(d.start)}</span></p>
+      <p>預約代碼${d.moved ? '（不變）' : ''}</p><p class="code">${esc(d.code)}</p>
+      <p class="hint">請截圖或記下此預約代碼。需要查詢、修改或取消時，可至下方「查詢、修改或取消預約」輸入預約代碼即可</p>
       <div><button type="button" class="btn ghost small" data-act="again">再預約一個時段</button></div></div>`;
+    return;
+  }
+  if (S.moving) {
+    if (!st || !S.sel.date || S.sel.start == null) { el.innerHTML = '<p class="hint">選擇新的時段後，按「確認修改」即可，聯絡資料不用重新填寫</p>'; return; }
+    el.innerHTML = `<form id="move-form" class="form" novalidate>
+      <p class="hint">原本：${esc(S.moving.staffName)} ${dLabel(S.moving.date)} ${fmt(S.moving.start)}</p>
+      <div class="summary"><span class="dot" style="background:${color(st.color)}"></span><b>${esc(st.name)}</b><span class="when">${dLabel(S.sel.date)} ${fmt(S.sel.start)}</span></div>
+      <p class="err" id="c-err" role="alert"></p>
+      <div class="acts" style="justify-content:flex-start"><button type="submit" class="btn primary" id="c-submit">確認修改</button><button type="button" class="btn ghost" data-act="move-cancel">取消修改</button></div>
+    </form>`;
     return;
   }
   if (!st || !S.sel.date || S.sel.start == null) {
@@ -151,7 +164,55 @@ async function submitBooking() {
 function cancelControls(k, act, attrs) {
   return S.confirm === k
     ? `<span class="confirm">確定要取消？<button type="button" class="btn danger small" data-act="${act}" ${attrs}>取消預約</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
-    : `<button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">取消預約</button>`;
+    : `<span class="acts"><button type="button" class="btn ghost small" data-act="move" ${attrs}>修改</button><button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">取消預約</button></span>`;
+}
+function renderMoving() {
+  const el = $('b-moving'); if (!el) return;
+  const m = S.moving;
+  if (!m) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  el.innerHTML = `<div><b>正在修改預約 <span class="mono">${esc(m.code)}</span></b>
+    <p class="hint">原本：${esc(m.staffName)} ${dLabel(m.date)} ${fmt(m.start)}。請在下方重新選擇研究人員、日期與時段，再按「確認修改」</p></div>
+    <button type="button" class="btn ghost small" data-act="move-cancel">取消修改</button>`;
+}
+async function startMove(code, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const t = await store.getTicket(code);
+    if (t.status !== 'booked') { U.toast('這筆預約已經取消了，無法修改'); return; }
+    if (t.date < today()) { U.toast('這筆預約的日期已經過了，無法修改'); return; }
+    S.moving = t; S.done = null; S.confirm = null;
+    const ok = activeStaff().some(s => s.id === t.staffId);
+    S.sel = { staffId: ok ? t.staffId : null, date: ok ? t.date : null, start: null };
+    S.month = t.date.slice(0, 7);
+    renderMoving(); renderStaffCards(); renderDates(); renderTimes(); renderForm(); renderDevice(); renderLookup();
+    $('b-moving').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  } catch (e) { U.toast(U.errMsg(e)); }
+  finally { if (btn) btn.disabled = false; }
+}
+function stopMove() {
+  S.moving = null; S.sel.start = null;
+  renderMoving(); renderDates(); renderTimes(); renderForm();
+}
+async function submitMove() {
+  const st = selStaff(), err = $('c-err'), btn = $('c-submit'), m = S.moving;
+  if (st.id === m.staffId && S.sel.date === m.date && S.sel.start === m.start) { err.textContent = '這就是原本的時段，請選擇其他時段'; return; }
+  const sl = avail(st, S.sel.date).find(x => x.start === S.sel.start);
+  if (!sl || !sl.ok) { err.textContent = '這個時段剛被預約走了，請選擇其他時段。'; renderTimes(); return; }
+  err.textContent = ''; btn.disabled = true; btn.textContent = '修改中…'; S.busy = true;
+  try {
+    const r = await store.moveBooking({ code: m.code, staff: st, date: S.sel.date, start: sl.start, end: sl.end, sameDay: pubSlots().filter(x => x.date === S.sel.date) });
+    S.busy = false;
+    S.done = Object.assign({}, r, { code: m.code, moved: true, from: { staffName: m.staffName, date: m.date, start: m.start } });
+    S.device = S.device.filter(x => x.code !== m.code).concat([{ code: m.code, staffName: r.staffName, date: r.date, start: r.start, end: r.end }]); saveDevice();
+    if (S.found && S.found.code === m.code) S.found = Object.assign({}, S.found, r, { code: m.code });
+    S.moving = null; S.sel.start = null;
+    renderMoving(); renderForm(); renderTimes(); renderDates(); renderDevice(); renderLookup();
+    U.toast('已修改預約');
+    $('b-form').scrollIntoView({ block: 'center', behavior: 'smooth' });
+  } catch (e) {
+    S.busy = false; btn.disabled = false; btn.textContent = '確認修改'; err.textContent = U.errMsg(e);
+  }
 }
 function row(b, extra) {
   return `<div class="bitem"><span class="when">${dLabel(b.date)} ${fmt(b.start)}</span><span class="who">${esc(b.staffName)}</span>${extra}</div>`;
@@ -159,7 +220,7 @@ function row(b, extra) {
 function renderDevice() {
   const el = $('b-device');
   const list = S.device.filter(b => b.date >= today()).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
-  if (!list.length) { el.innerHTML = '<p class="hint">輸入預約成功時拿到的預約代碼，即可查看或取消預約</p>'; return; }
+  if (!list.length) { el.innerHTML = '<p class="hint">輸入預約成功時拿到的預約代碼，即可查看、修改或取消預約</p>'; return; }
   el.innerHTML = '<p class="hint" style="margin-bottom:4px">你在這台裝置上預約的時段：</p><div class="blist">' +
     list.map(b => row(b, `<span class="mono hint">${esc(b.code)}</span>` + cancelControls('dev:' + b.code, 'cancel', `data-code="${esc(b.code)}"`))).join('') +
     '</div><p class="hint" style="margin-top:10px">也可以輸入預約代碼查詢其他預約：</p>';
@@ -176,6 +237,7 @@ async function cancel(code, btn) {
   try {
     await store.cancelByCode(code);
     U.toast('已取消預約 ' + code);
+    if (S.moving && S.moving.code === code) stopMove();
     if (S.found && S.found.code === code) S.found.status = 'cancelled';
     S.device = S.device.filter(x => x.code !== code); saveDevice();
   } catch (e) {
@@ -207,6 +269,8 @@ document.addEventListener('click', e => {
     case 'ask': S.confirm = b.dataset.k; renderDevice(); renderLookup(); break;
     case 'confirm-no': S.confirm = null; renderDevice(); renderLookup(); break;
     case 'cancel': cancel(b.dataset.code, b); break;
+    case 'move': startMove(b.dataset.code, b); break;
+    case 'move-cancel': stopMove(); break;
   }
 });
 document.addEventListener('input', e => {
@@ -217,6 +281,7 @@ document.addEventListener('input', e => {
 document.addEventListener('submit', async e => {
   e.preventDefault();
   if (e.target.id === 'book-form') submitBooking();
+  if (e.target.id === 'move-form') submitMove();
   if (e.target.id === 'lookup-form') {
     const code = $('l-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''), btn = $('l-submit');
     if (code.length !== 8) { $('l-err').textContent = '預約代碼是 8 碼英文與數字，請再確認一次。'; return; }

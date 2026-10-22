@@ -150,7 +150,7 @@ function firebaseStore(needAuth) {
           if (!U.roomFree(p.start, p.end, occupied, extra)) throw new Error(TAKEN);
           b[bookingRef.id] = [p.start, p.end];
           tx.set(slotRef, { staffId: st.id, date: p.date, start: p.start, end: p.end, bookingId: bookingRef.id, createdAt: ts });
-          tx.set(bookingRef, Object.assign({}, base, { name: p.name, round: p.round, phone: p.phone, email: p.email, note: p.note, status: 'booked', code, slotKey, createdAt: ts }));
+          tx.set(bookingRef, Object.assign({}, base, { name: p.name, round: p.round, phone: p.phone, email: p.email, note: p.note, status: 'booked', code, slotKey, createdAt: ts }, p.createdBy ? { createdBy: p.createdBy } : {}));
           tx.set(F.db.doc('tickets/' + code), Object.assign({}, base, { bookingId: bookingRef.id, slotKey, status: 'booked' }));
           tx.set(roomRef, { date: p.date, b, last: bookingRef.id, extra });
         });
@@ -165,6 +165,67 @@ function firebaseStore(needAuth) {
       }
     }
   };
+
+  /**
+   * 修改預約的日期／時間／研究人員（姓名等資料不變）。
+   * 家長：p.code（預約代碼）；後台：p.booking（完整預約資料）。
+   */
+  S.moveBooking = async function (p) {
+    await ready;
+    const TAKEN = '這個時段剛被預約走了，請選擇其他時段。';
+    let cur = p.booking;
+    if (!cur) {
+      const t = await F.db.doc('tickets/' + p.code).get();
+      if (!t.exists) throw new Error('找不到這個預約代碼。');
+      const d = t.data();
+      if (d.status !== 'booked') throw new Error('這筆預約已經取消了，無法修改。');
+      cur = { id: d.bookingId, staffId: d.staffId, date: d.date, start: d.start, end: d.end, slotKey: d.slotKey, code: p.code };
+    }
+    const st = p.staff, newKey = U.slotKey(st.id, p.date, p.start);
+    const moved = { code: cur.code, staffId: st.id, staffName: st.name, date: p.date, start: p.start, end: p.end, status: 'booked' };
+    if (newKey === cur.slotKey) return moved;
+    const bRef = F.db.doc('bookings/' + cur.id), newSlotRef = F.db.doc('slots/' + newKey);
+    const oldRoomRef = F.db.doc('rooms/' + cur.date), newRoomRef = F.db.doc('rooms/' + p.date), sameDate = cur.date === p.date;
+    try {
+      await F.db.runTransaction(async tx => {
+        const newSlot = await tx.get(newSlotRef);
+        const oldRoom = await tx.get(oldRoomRef);
+        const newRoom = sameDate ? oldRoom : await tx.get(newRoomRef);
+        if (newSlot.exists) throw new Error(TAKEN);
+        const nr = newRoom.exists ? newRoom.data() : {};
+        const nb = Object.assign({}, nr.b || {}), extra = nr.extra || [];
+        delete nb[cur.id];
+        const occupied = Object.keys(nb).map(k => ({ start: nb[k][0], end: nb[k][1] }))
+          .concat((p.sameDay || []).filter(x => x.bookingId && x.bookingId !== cur.id && !nb[x.bookingId]));
+        if (!U.roomFree(p.start, p.end, occupied, extra)) throw new Error(TAKEN);
+        const ts = F.FV.serverTimestamp();
+        const upd = { staffId: st.id, staffName: st.name, date: p.date, start: p.start, end: p.end, slotKey: newKey, movedAt: ts };
+        if (!p.booking) upd.proof = cur.code;
+        tx.update(bRef, upd);
+        if (cur.slotKey) tx.delete(F.db.doc('slots/' + cur.slotKey));
+        tx.set(newSlotRef, { staffId: st.id, date: p.date, start: p.start, end: p.end, bookingId: cur.id, createdAt: ts });
+        if (cur.code) tx.update(F.db.doc('tickets/' + cur.code), { staffId: st.id, staffName: st.name, date: p.date, start: p.start, end: p.end, slotKey: newKey });
+        nb[cur.id] = [p.start, p.end];
+        tx.set(newRoomRef, { date: p.date, b: nb, last: cur.id, extra });
+        if (!sameDate && oldRoom.exists && (oldRoom.data().b || {})[cur.id]) {
+          const ob = Object.assign({}, oldRoom.data().b); delete ob[cur.id];
+          tx.set(oldRoomRef, { date: cur.date, b: ob, last: cur.id, extra: oldRoom.data().extra || [] });
+        }
+      });
+    } catch (e) {
+      if (e && e.message === TAKEN) throw e;
+      if (e && e.code === 'aborted') throw new Error('目前預約的人較多，請再按一次。');
+      if (e && e.code === 'permission-denied') {
+        const s = await newSlotRef.get().catch(() => null);
+        if (s && s.exists) throw new Error(TAKEN);
+        throw new Error('修改沒有成功，請重新整理頁面後再試一次。');
+      }
+      throw e;
+    }
+    return moved;
+  };
+  /** 後台修改孩子姓名、第幾次評估、電話、Email */
+  S.updateBookingInfo = async (id, info) => { await ready; await F.db.doc('bookings/' + id).update(info); };
 
   S.getTicket = async function (code) {
     await ready;
@@ -202,7 +263,7 @@ function firebaseStore(needAuth) {
     catch (e) { if (e.code === 'permission-denied') return false; throw e; }
   };
   S.subscribeAdmin = function (cb, onErr) {
-    const st = { staff: [], bookings: [], admins: [], calendars: {}, calendarsUnavailable: false, rooms: {}, got: {} };
+    const st = { staff: [], bookings: [], admins: [], calendars: {}, calendarsUnavailable: false, rooms: {}, lineStaff: {}, got: {} };
     const unsubs = []; let dead = false;
     const emit = k => { st.got[k] = true; cb(st); };
     ready.then(() => {
@@ -216,12 +277,22 @@ function firebaseStore(needAuth) {
       unsubs.push(F.db.doc('private/calendars').onSnapshot(
         s => { st.calendars = s.exists ? s.data() : {}; st.calendarsUnavailable = false; emit('calendars'); },
         () => { st.calendars = {}; st.calendarsUnavailable = true; emit('calendars'); }));
+      // 已綁定 LINE 通知的研究人員
+      unsubs.push(F.db.doc('private/lineStaff').onSnapshot(s => { st.lineStaff = s.exists ? s.data() : {}; cb(st); }, () => {}));
     });
     return () => { dead = true; unsubs.forEach(f => f()); };
   };
   S.saveStaff = async (id, data) => { await ready; await F.db.doc('staff/' + id).set(data); };
   S.deleteStaff = async id => { await ready; await F.db.doc('staff/' + id).delete(); };
   S.saveAdmins = async emails => { await ready; await F.db.doc('config/admins').set({ emails }); };
+  /** 產生 LINE 綁定碼（研究人員把它傳給官方帳號即可綁定） */
+  S.createLineBind = async staffId => {
+    await ready;
+    const code = U.genCode().slice(0, 6);
+    await F.db.doc('private/lineBind').set({ [code]: { staffId, at: Date.now() } }, { merge: true });
+    return code;
+  };
+  S.unbindLine = async staffId => { await ready; await F.db.doc('private/lineStaff').set({ [staffId]: F.FV.delete() }, { merge: true }); };
   S.saveCalendar = async (staffId, email) => { await ready; await F.db.doc('private/calendars').set({ [staffId]: email || F.FV.delete() }, { merge: true }); };
   S.cancelBooking = async function (b) {
     await ready;
@@ -253,7 +324,7 @@ function firebaseStore(needAuth) {
 
 /* ================= 預覽模式（範例資料，只存在這個瀏覽器） ================= */
 function demoStore() {
-  const KEY = 'booking-demo-v7';
+  const KEY = 'booking-demo-v9';
   const subs = new Set();
   let db = load(), user = null;
   const authSubs = new Set();
@@ -263,10 +334,11 @@ function demoStore() {
   function seed() {
     const wk = () => [{ s: '09:00', e: '12:00' }, { s: '14:00', e: '17:00' }];
     const d = {
-      v: 7,
+      v: 9,
       rooms: {},
       admins: ['teacher.chen@example.com'],
       calendars: { demolin: 'lin.researcher@gmail.com' },
+      lineStaff: { demolin: ['U-demo'] },
       staff: [
         { id: 'demolin', name: '林老師（範例）', role: '職能治療個別課', color: COLORS[0], duration: 50, buffer: 10, bookUntil: U.addDays(U.today(), 20), notice: 12, active: true, order: 1, weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [{ s: '09:00', e: '12:00' }], 0: [] }, closedDates: [] },
         { id: 'demochen', name: '陳老師（範例）', role: '感覺統合團體課', color: COLORS[1], duration: 90, buffer: 30, bookUntil: U.addDays(U.today(), 27), notice: 24, active: true, order: 2, weekly: { 1: [], 2: [{ s: '14:00', e: '18:00' }], 3: [], 4: [{ s: '14:00', e: '18:00' }], 5: [], 6: [{ s: '09:00', e: '13:00' }], 0: [] }, closedDates: [] }
@@ -285,7 +357,7 @@ function demoStore() {
     return d;
   }
   function load() {
-    try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.v === 7) return v; } catch (e) { /* 無法使用瀏覽器儲存 */ }
+    try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.v === 9) return v; } catch (e) { /* 無法使用瀏覽器儲存 */ }
     const s = seed(); try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* 略過 */ }
     return s;
   }
@@ -305,11 +377,23 @@ function demoStore() {
     const st = db.staff.find(s => s.id === p.staff.id && s.active);
     if (!st) return Promise.reject(new Error('找不到這位研究人員。'));
     const sl = U.available(st, p.date, slots(), rooms()).find(x => x.start === p.start);
-    if (!sl || !sl.ok) return Promise.reject(new Error('這個時段剛被預約走了，請選擇其他時段。'));
-    const b = { id: U.rid(), code: U.genCode(), staffId: st.id, staffName: st.name, date: p.date, start: sl.start, end: sl.end, name: p.name, round: p.round, phone: p.phone, email: p.email, note: p.note, status: 'booked', slotKey: U.slotKey(st.id, p.date, sl.start) };
+    if (!sl || sl.taken || (!p.createdBy && sl.past)) return Promise.reject(new Error('這個時段剛被預約走了，請選擇其他時段。'));
+    const b = { id: U.rid(), code: U.genCode(), staffId: st.id, staffName: st.name, date: p.date, start: sl.start, end: sl.end, name: p.name, round: p.round, phone: p.phone, email: p.email, note: p.note, status: 'booked', slotKey: U.slotKey(st.id, p.date, sl.start), createdBy: p.createdBy || '' };
     db.bookings.push(b); save();
     return later(ticket(b));
   };
+  S.moveBooking = function (p) {
+    const b = p.booking ? db.bookings.find(x => x.id === p.booking.id) : db.bookings.find(x => x.code === p.code);
+    if (!b) return Promise.reject(new Error('找不到這個預約代碼。'));
+    if (b.status !== 'booked') return Promise.reject(new Error('這筆預約已經取消了，無法修改。'));
+    const st = db.staff.find(s => s.id === p.staff.id);
+    const others = slots().filter(x => x.bookingId !== b.id);
+    const sl = U.available(st, p.date, others, rooms()).find(x => x.start === p.start);
+    if (!sl || (sl.taken) || (!p.booking && sl.past)) return Promise.reject(new Error('這個時段剛被預約走了，請選擇其他時段。'));
+    Object.assign(b, { staffId: st.id, staffName: st.name, date: p.date, start: sl.start, end: sl.end, slotKey: U.slotKey(st.id, p.date, sl.start), movedAt: Date.now() });
+    save(); return later(ticket(b));
+  };
+  S.updateBookingInfo = (id, info) => { const b = db.bookings.find(x => x.id === id); if (b) Object.assign(b, info); save(); return later(); };
   S.getTicket = code => {
     const b = db.bookings.find(x => x.code === code);
     return b ? later(ticket(b)) : Promise.reject(new Error('找不到這個預約代碼，請確認是否輸入正確。'));
@@ -324,10 +408,12 @@ function demoStore() {
   S.signIn = () => { user = { email: 'you@example.com' }; authSubs.forEach(f => f(user)); return later(); };
   S.signOut = () => { user = null; authSubs.forEach(f => f(null)); return later(); };
   S.checkAdmin = () => later(true);
-  S.subscribeAdmin = cb => watch(() => cb(clone({ staff: db.staff, bookings: db.bookings, admins: db.admins, calendars: db.calendars || {}, calendarsUnavailable: false, rooms: rooms(), got: { staff: true, bookings: true, admins: true, calendars: true, rooms: true } })));
+  S.subscribeAdmin = cb => watch(() => cb(clone({ staff: db.staff, bookings: db.bookings, admins: db.admins, calendars: db.calendars || {}, calendarsUnavailable: false, rooms: rooms(), lineStaff: db.lineStaff || {}, got: { staff: true, bookings: true, admins: true, calendars: true, rooms: true } })));
   S.saveStaff = (id, data) => { const i = db.staff.findIndex(s => s.id === id); const o = Object.assign({ id }, clone(data)); if (i >= 0) db.staff[i] = o; else db.staff.push(o); save(); return later(); };
   S.deleteStaff = id => { db.staff = db.staff.filter(s => s.id !== id); save(); return later(); };
   S.saveAdmins = emails => { db.admins = emails.slice(); save(); return later(); };
+  S.createLineBind = staffId => { const code = U.genCode().slice(0, 6); db.lineBind = Object.assign({}, db.lineBind, { [code]: { staffId } }); save(); return later(code); };
+  S.unbindLine = staffId => { db.lineStaff = Object.assign({}, db.lineStaff); delete db.lineStaff[staffId]; save(); return later(); };
   S.saveCalendar = (staffId, email) => { db.calendars = db.calendars || {}; if (email) db.calendars[staffId] = email; else delete db.calendars[staffId]; save(); return later(); };
   S.cancelBooking = b => { const x = db.bookings.find(y => y.id === b.id); if (x) { x.status = 'cancelled'; x.cancelledBy = 'admin'; } save(); return later(); };
   S.reopen = (date, s, e) => { db.rooms = db.rooms || {}; const r = db.rooms[date] = db.rooms[date] || { extra: [] }; if (!r.extra.some(x => x.s === s && x.e === e)) r.extra.push({ s, e }); save(); return later(); };

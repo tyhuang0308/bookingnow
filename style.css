@@ -72,7 +72,7 @@ p{margin:0}
 .page{padding:36px;display:flex;flex-direction:column;gap:36px;min-width:0}
 .page.left{border-right:1px solid var(--line)}
 @media (max-width:900px){.page{padding:28px}}
-@media (max-width:820px){.spread{grid-template-columns:minmax(0,1fr)}.page.left{border-right:0;border-bottom:1px solid var(--line)}}
+@media (max-width:820px){.spread{grid-template-columns:minmax(0,1fr)}.page.left{border-right:0;border-bottom:0;padding-bottom:0}}
 @media (max-width:480px){.page{padding:24px 18px;gap:28px}.spread,.box,.panel{border-radius:24px}}
 .step{display:flex;flex-direction:column;gap:14px;min-width:0}
 /* 步驟：上方 01 小標籤，下方標題 */

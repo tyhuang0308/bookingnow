@@ -276,7 +276,7 @@ function renderBookings() {
   const covered = b => extras.some(x => x.s <= b.start && b.end <= x.e);
   let detail = `<div class="bk-day"><div class="day-actions"><h3>${dLabel(day)}${day === t ? ' · 今天' : ''}</h3>${day >= t ? '<button type="button" class="btn primary small" data-act="bf-new">＋ 新增預約</button>' : ''}</div>`;
   if (S.bkDone) detail += `<div class="bk-done" role="status"><b>已${S.bkDone.edit ? '修改' : '新增'}預約：${esc(S.bkDone.name)}　${esc(S.bkDone.staffName)} ${dLabel(S.bkDone.date)} ${fmt(S.bkDone.start)}</b>
-    ${S.bkDone.code ? `<span>預約代碼 <b class="mono">${esc(S.bkDone.code)}</b>（請告知家長，家長可用這組代碼查詢、修改或取消預約）</span>` : ''}
+    ${S.bkDone.code ? `<span>預約代碼 <b class="mono">${esc(S.bkDone.code)}</b>（家長可以用孩子姓名＋電話，或這組代碼查詢、修改或取消預約）</span>` : ''}
     <div><button type="button" class="btn ghost small" data-act="bf-done-close">關閉</button></div></div>`;
   if (S.bkForm) detail += bkFormHTML();
   if (!list.length) detail += '<p class="hint" style="padding-top:10px">這一天沒有預約</p>';
@@ -325,19 +325,36 @@ function adminChoices(st, date, excludeId) {
   const now = Date.now(), base = U.parseD(date).getTime();
   return U.available(st, date, adminSlots(excludeId), S.data.rooms).map(x => Object.assign({}, x, { ok: !x.taken && base + x.start * 60000 > now }));
 }
+/** 自訂時間：檢查是否已過、是否和同一位研究人員的其他預約重疊、共用場地是否還有空位 */
+function customProblem(st, date, s, e, excludeId) {
+  if (!(s >= 0) || !(e > s)) return '請輸入正確的開始與結束時間，結束要晚於開始';
+  if (e - s > 600) return '一次預約最長 10 小時，請確認時間是否正確';
+  if (U.parseD(date).getTime() + s * 60000 <= Date.now()) return '這個時間已經過了，請選擇之後的時間';
+  const sameDay = adminSlots(excludeId).filter(x => x.date === date);
+  if (sameDay.some(x => x.staffId === st.id && s < x.end && x.start < e)) return '這段時間和這位研究人員的其他預約重疊了';
+  const extras = (S.data.rooms && S.data.rooms[date] && S.data.rooms[date].extra) || [];
+  if (!U.roomFree(s, e, sameDay, extras)) return '這段時間共用場地已經有其他預約，可以先在月曆上「重新開放此時段」再預約';
+  return '';
+}
 function bkFormHTML() {
   const f = S.bkForm, staff = aStaff(), st = staff.find(s => s.id === f.staffId);
   const list = adminChoices(st, f.date, f.id).filter(x => U.parseD(f.date).getTime() + x.start * 60000 > Date.now());
+  const toggle = `<button type="button" class="linkbtn" data-act="bf-custom">${f.custom ? '改回選擇固定時段' : '改用自訂時間'}</button>`;
   const slotsHTML = !st ? '<p class="hint">先選擇研究人員</p>' : !f.date ? '<p class="hint">先選擇日期</p>'
-    : !list.length ? '<p class="hint">這一天沒有可預約的時段</p>'
-    : '<div class="slots">' + list.map(x => `<button type="button" class="slot" data-act="bf-slot" data-s="${x.start}" ${x.ok ? '' : 'disabled'} aria-pressed="${x.start === f.start}">${fmt(x.start)}</button>`).join('') + '</div>';
+    : f.custom
+      ? `<div class="custom-time"><label class="field"><span>開始</span><input type="time" id="bf-cs" step="300" value="${esc(f.cs || '')}"></label>
+          <span class="dash">–</span>
+          <label class="field"><span>結束</span><input type="time" id="bf-ce" step="300" value="${esc(f.ce || '')}"></label></div>
+        <p class="hint">自訂時間不受「每週開放時段」與休假限制，但不能和其他預約或共用場地衝突</p>`
+    : (!list.length ? '<p class="hint">這一天沒有可預約的固定時段，可以改用自訂時間</p>'
+      : '<div class="slots">' + list.map(x => `<button type="button" class="slot" data-act="bf-slot" data-s="${x.start}" ${x.ok ? '' : 'disabled'} aria-pressed="${x.start === f.start}">${fmt(x.start)}</button>`).join('') + '</div>');
   return `<form id="bk-form" class="bk-form" novalidate>
     <h4>${f.id ? '修改預約' : '新增預約（後台代約）'}</h4>
     <div class="g2">
       <label class="field"><span>研究人員</span><select id="bf-staff"><option value="">請選擇</option>${staff.map(s => `<option value="${esc(s.id)}" ${s.id === f.staffId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
       <label class="field"><span>日期</span><input type="date" id="bf-date" min="${today()}" value="${esc(f.date || '')}"></label>
     </div>
-    <div class="field"><span>時段（不受「最晚需提前」限制）</span>${slotsHTML}</div>
+    <div class="field"><span>${f.custom ? '自訂評估時間' : '時段（不受「最晚需提前」限制）'}</span>${slotsHTML}${st && f.date ? `<p class="custom-toggle">${toggle}</p>` : ''}</div>
     <div class="g2">
       <label class="field"><span>孩子姓名<b class="req">*</b></span><input type="text" id="bf-name" maxlength="40" value="${esc(f.name || '')}"></label>
       <div class="field"><span>第幾次評估<b class="req">*</b></span><div class="seg">${[1, 2, 3].map(n => `<label><input type="radio" name="bf-round" id="bf-round-${n}" value="${n}" ${Number(f.round) === n ? 'checked' : ''}><span>第${n}次</span></label>`).join('')}</div></div>
@@ -355,6 +372,7 @@ function readBkForm() {
   f.staffId = $('bf-staff').value; f.date = $('bf-date').value;
   f.name = $('bf-name').value; f.phone = $('bf-phone').value; f.email = $('bf-email').value;
   const r = document.querySelector('input[name="bf-round"]:checked'); f.round = r ? Number(r.value) : f.round;
+  if ($('bf-cs')) { f.cs = $('bf-cs').value; f.ce = $('bf-ce').value; }
 }
 async function saveBkForm() {
   readBkForm();
@@ -363,9 +381,18 @@ async function saveBkForm() {
   const fail = m => { f.err = m; err.textContent = m; };
   if (!st) return fail('請選擇研究人員');
   if (!f.date) return fail('請選擇日期');
-  const sl = adminChoices(st, f.date, f.id).find(x => x.start === f.start);
-  if (f.start == null || !sl) return fail('請選擇時段');
-  if (!sl.ok) return fail('這個時段已經被預約或已經過了，請選擇其他時段');
+  let sl;
+  if (f.custom) {
+    const cs = U.toMin(f.cs), ce = U.toMin(f.ce);
+    if (!f.cs || !f.ce) return fail('請輸入開始與結束時間');
+    const bad = customProblem(st, f.date, cs, ce, f.id);
+    if (bad) return fail(bad);
+    sl = { start: cs, end: ce };
+  } else {
+    sl = adminChoices(st, f.date, f.id).find(x => x.start === f.start);
+    if (f.start == null || !sl) return fail('請選擇時段');
+    if (!sl.ok) return fail('這個時段已經被預約或已經過了，請選擇其他時段');
+  }
   if (!name) return fail('請填寫孩子姓名');
   if (!(f.round >= 1 && f.round <= 3)) return fail('請選擇第幾次評估');
   if (!/^[0-9+()#-]{6,20}$/.test(phone)) return fail('請填寫正確的聯絡電話');
@@ -374,14 +401,14 @@ async function saveBkForm() {
   const sameDay = adminSlots(f.id).filter(x => x.date === f.date);
   try {
     if (!f.id) {
-      const r = await store.book({ staff: st, date: f.date, start: sl.start, end: sl.end, sameDay, name, round: f.round, phone, email, note: '', createdBy: S.user.email });
+      const r = await store.book({ staff: st, date: f.date, start: sl.start, end: sl.end, sameDay, name, round: f.round, phone, email, note: '', createdBy: S.user.email, custom: !!f.custom });
       S.bkDone = { code: r.code, name, staffName: st.name, date: f.date, start: sl.start };
       U.toast('已新增預約，預約代碼 ' + r.code);
     } else {
       const b = (S.data.bookings || []).find(x => x.id === f.id);
       if (!b || b.status !== 'booked') throw new Error('這筆預約已經取消了');
-      if (b.staffId !== st.id || b.date !== f.date || b.start !== sl.start) {
-        await store.moveBooking({ booking: { id: b.id, staffId: b.staffId, date: b.date, start: b.start, end: b.end, slotKey: b.slotKey, code: b.code }, staff: st, date: f.date, start: sl.start, end: sl.end, sameDay });
+      if (b.staffId !== st.id || b.date !== f.date || b.start !== sl.start || b.end !== sl.end) {
+        await store.moveBooking({ booking: { id: b.id, staffId: b.staffId, date: b.date, start: b.start, end: b.end, slotKey: b.slotKey, code: b.code }, staff: st, date: f.date, start: sl.start, end: sl.end, sameDay, custom: !!f.custom });
       }
       if (b.name !== name || Number(b.round) !== Number(f.round) || b.phone !== phone || (b.email || '') !== email) {
         await store.updateBookingInfo(b.id, { name, round: Number(f.round), phone, email }, b.code);
@@ -494,10 +521,24 @@ document.addEventListener('click', async e => {
     case 'bf-edit': {
       const bk = (S.data.bookings || []).find(x => x.id === b.dataset.id); if (!bk) break;
       S.bkDone = null; S.bkForm = { id: bk.id, staffId: bk.staffId, date: bk.date, start: bk.start, name: bk.name, round: Number(bk.round) || 0, phone: bk.phone, email: bk.email || '' };
+      {
+        // 不在固定時段上的預約（之前用自訂時間建立的），直接用自訂時間編輯
+        const st0 = aStaff().find(s => s.id === bk.staffId);
+        const onGrid = st0 && U.daySlots(st0, U.parseD(bk.date).getDay()).some(x => x.start === bk.start && x.end === bk.end);
+        if (!onGrid) Object.assign(S.bkForm, { custom: true, cs: fmt(bk.start), ce: fmt(bk.end) });
+      }
       renderBookings(); $('bk-form').scrollIntoView({ block: 'center', behavior: 'smooth' }); break;
     }
     case 'bf-slot': readBkForm(); S.bkForm.start = Number(b.dataset.s); S.bkForm.err = ''; renderBookings(); break;
     case 'bf-close': S.bkForm = null; renderBookings(); break;
+    case 'bf-custom': {
+      readBkForm(); const f = S.bkForm; f.custom = !f.custom; f.err = '';
+      if (f.custom && !f.cs) {
+        const st = aStaff().find(s => s.id === f.staffId), dur = st ? U.num(st.duration, 60) : 60;
+        if (f.start != null) { f.cs = fmt(f.start); f.ce = fmt(Math.min(f.start + dur, 1439)); }
+      }
+      renderBookings(); break;
+    }
     case 'bf-done-close': S.bkDone = null; renderBookings(); break;
     case 'line-bind': {
       b.disabled = true;

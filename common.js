@@ -209,7 +209,7 @@ function firebaseStore(needAuth) {
     }
     const st = p.staff, newKey = U.slotKey(st.id, p.date, p.start);
     const moved = { code: cur.code, staffId: st.id, staffName: st.name, date: p.date, start: p.start, end: p.end, status: 'booked' };
-    if (newKey === cur.slotKey) return moved;
+    if (newKey === cur.slotKey && p.end === cur.end) return moved;
     const bRef = F.db.doc('bookings/' + cur.id), newSlotRef = F.db.doc('slots/' + newKey);
     const oldRoomRef = F.db.doc('rooms/' + cur.date), newRoomRef = F.db.doc('rooms/' + p.date), sameDate = cur.date === p.date;
     try {
@@ -217,7 +217,7 @@ function firebaseStore(needAuth) {
         const newSlot = await tx.get(newSlotRef);
         const oldRoom = await tx.get(oldRoomRef);
         const newRoom = sameDate ? oldRoom : await tx.get(newRoomRef);
-        if (newSlot.exists) throw new Error(TAKEN);
+        if (newSlot.exists && newSlot.data().bookingId !== cur.id) throw new Error(TAKEN);
         const nr = newRoom.exists ? newRoom.data() : {};
         const nb = Object.assign({}, nr.b || {}), extra = nr.extra || [];
         delete nb[cur.id];
@@ -228,7 +228,7 @@ function firebaseStore(needAuth) {
         const upd = { staffId: st.id, staffName: st.name, date: p.date, start: p.start, end: p.end, slotKey: newKey, movedAt: ts };
         if (!p.booking) upd.proof = cur.code;
         tx.update(bRef, upd);
-        if (cur.slotKey) tx.delete(F.db.doc('slots/' + cur.slotKey));
+        if (cur.slotKey && cur.slotKey !== newKey) tx.delete(F.db.doc('slots/' + cur.slotKey));
         tx.set(newSlotRef, { staffId: st.id, date: p.date, start: p.start, end: p.end, bookingId: cur.id, createdAt: ts });
         if (cur.code) tx.update(F.db.doc('tickets/' + cur.code), { staffId: st.id, staffName: st.name, date: p.date, start: p.start, end: p.end, slotKey: newKey });
         nb[cur.id] = [p.start, p.end];
@@ -421,13 +421,20 @@ function demoStore() {
   const rooms = () => db.rooms || {};
   const ticket = b => ({ code: b.code, bookingId: b.id, staffId: b.staffId, staffName: b.staffName, date: b.date, start: b.start, end: b.end, slotKey: b.slotKey, status: b.status });
   const watch = f => { subs.add(f); setTimeout(f, 0); return () => subs.delete(f); };
+  /** 範例模式：後台自訂時間的衝突檢查 */
+  const demoCustom = (st, date, s, e, exclude) => {
+    const same = slots().filter(x => x.date === date && x.bookingId !== exclude);
+    const extras = (rooms()[date] && rooms()[date].extra) || [];
+    const taken = same.some(x => x.staffId === st.id && s < x.end && x.start < e) || !U.roomFree(s, e, same, extras);
+    return { start: s, end: e, taken, past: false };
+  };
 
   const S = {};
   S.subscribePublic = cb => { watch(() => cb(clone({ staff: db.staff, slots: slots(), rooms: rooms(), got: { staff: true, slots: true, rooms: true } }))); };
   S.book = function (p) {
     const st = db.staff.find(s => s.id === p.staff.id && s.active);
     if (!st) return Promise.reject(new Error('找不到這位研究人員。'));
-    const sl = U.available(st, p.date, slots(), rooms()).find(x => x.start === p.start);
+    const sl = p.custom ? demoCustom(st, p.date, p.start, p.end, null) : U.available(st, p.date, slots(), rooms()).find(x => x.start === p.start);
     if (!sl || sl.taken || (!p.createdBy && sl.past)) return Promise.reject(new Error('這個時段剛被預約走了，請選擇其他時段。'));
     const b = { id: U.rid(), code: U.genCode(), staffId: st.id, staffName: st.name, date: p.date, start: sl.start, end: sl.end, name: p.name, round: p.round, phone: p.phone, email: p.email, note: p.note, status: 'booked', slotKey: U.slotKey(st.id, p.date, sl.start), createdBy: p.createdBy || '' };
     db.bookings.push(b); save();
@@ -439,7 +446,7 @@ function demoStore() {
     if (b.status !== 'booked') return Promise.reject(new Error('這筆預約已經取消了，無法修改。'));
     const st = db.staff.find(s => s.id === p.staff.id);
     const others = slots().filter(x => x.bookingId !== b.id);
-    const sl = U.available(st, p.date, others, rooms()).find(x => x.start === p.start);
+    const sl = p.custom ? demoCustom(st, p.date, p.start, p.end, b.id) : U.available(st, p.date, others, rooms()).find(x => x.start === p.start);
     if (!sl || (sl.taken) || (!p.booking && sl.past)) return Promise.reject(new Error('這個時段剛被預約走了，請選擇其他時段。'));
     Object.assign(b, { staffId: st.id, staffName: st.name, date: p.date, start: sl.start, end: sl.end, slotKey: U.slotKey(st.id, p.date, sl.start), movedAt: Date.now() });
     save(); return later(ticket(b));

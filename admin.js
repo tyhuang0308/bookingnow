@@ -101,7 +101,7 @@ function renderStaffList() {
     <span class="dot" style="background:${color(s.color)}"></span><span class="nm">${esc(s.name)}${s.active === false ? '<span class="tag">暫停</span>' : ''}</span><span class="mt">${esc(staffMeta(s))}</span></button>`).join('') || '<p class="hint" style="padding:8px 4px">還沒有人員。</p>'}</div>`;
 }
 function blankDraft() {
-  const used = aStaff().map(s => s.color), wk = () => [{ s: '09:00', e: '12:00' }, { s: '14:00', e: '18:00' }];
+  const used = aStaff().map(s => color(s.color)), wk = () => [{ s: '09:00', e: '12:00' }, { s: '14:00', e: '18:00' }];
   return { name: '', role: '', color: COLORS.find(c => !used.includes(c)) || COLORS[0], duration: 60, buffer: 0, bookUntil: U.addDays(today(), 29), notice: 2, active: true,
     weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [], 0: [] }, closedDates: [], closedTimes: [], calEmail: '' };
 }
@@ -130,7 +130,7 @@ function renderEditor() {
       <datalist id="cal-opts">${(S.data.admins || []).map(e => `<option value="${esc(e)}"></option>`).join('')}</datalist></label>
     <p class="hint">主要行事曆請填Gmail；其他行事曆請到Google日曆「設定」→ 點選該行事曆 →「整合日曆」，複製「日曆ID」。研究人員需先把這個行事曆共用給網站擁有者，權限選「變更活動」</p>
     ${S.data.calendarsUnavailable ? '<p class="warn">要設定行事曆帳號，請先依說明更新Firebase的資料庫安全規則</p>' : ''}
-    <fieldset class="field"><legend>代表色</legend><div class="swatches">${COLORS.map((c, i) => `<label><input type="radio" name="f-color" id="f-color-${i}" value="${c}" ${c === d.color ? 'checked' : ''} aria-label="顏色 ${i + 1}"><span style="background:${c}"></span></label>`).join('')}</div></fieldset>
+    <fieldset class="field"><legend>代表色</legend><div class="swatches">${COLORS.map((c, i) => `<label><input type="radio" name="f-color" id="f-color-${i}" value="${c}" ${c === color(d.color) ? 'checked' : ''} aria-label="顏色 ${i + 1}"><span style="background:${c}"></span></label>`).join('')}</div></fieldset>
     <div>
       <div class="g4">
         <label class="field"><span>每段時長</span><span class="unit"><input type="number" id="f-dur" min="5" max="480" step="5" value="${d.duration}"><em>分鐘</em></span></label>
@@ -384,7 +384,7 @@ async function saveBkForm() {
         await store.moveBooking({ booking: { id: b.id, staffId: b.staffId, date: b.date, start: b.start, end: b.end, slotKey: b.slotKey, code: b.code }, staff: st, date: f.date, start: sl.start, end: sl.end, sameDay });
       }
       if (b.name !== name || Number(b.round) !== Number(f.round) || b.phone !== phone || (b.email || '') !== email) {
-        await store.updateBookingInfo(b.id, { name, round: Number(f.round), phone, email });
+        await store.updateBookingInfo(b.id, { name, round: Number(f.round), phone, email }, b.code);
       }
       S.bkDone = { edit: true, name, staffName: st.name, date: f.date, start: sl.start };
       U.toast('已修改預約');
@@ -432,6 +432,21 @@ async function saveAdmins(list, okMsg) {
   catch (e) { U.toast(U.errMsg(e)); }
 }
 
+/* ---------- 姓名＋電話查詢索引：替舊預約補上（每台電腦每筆只做一次） ---------- */
+let lookupBusy = false;
+function ensureLookups() {
+  if (lookupBusy || !S.data || !store.addLookups) return;
+  let done = {};
+  try { done = JSON.parse(localStorage.getItem('booking-lookup-done') || '{}') || {}; } catch (e) { done = {}; }
+  const todo = (S.data.bookings || []).filter(b => b.status === 'booked' && b.date >= today() && b.code && b.name && b.phone && done[b.id] !== b.name + '|' + b.phone);
+  if (!todo.length) return;
+  lookupBusy = true;
+  store.addLookups(todo).then(() => {
+    todo.forEach(b => { done[b.id] = b.name + '|' + b.phone; });
+    try { localStorage.setItem('booking-lookup-done', JSON.stringify(done)); } catch (e) { /* 略過 */ }
+  }).catch(() => { /* 下次開啟後台再試 */ }).finally(() => { lookupBusy = false; });
+}
+
 /* ---------- 登入流程 ---------- */
 function startData() {
   if (S.unsub) S.unsub();
@@ -440,6 +455,7 @@ function startData() {
     const first = !S.data;
     S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [], calendars: st.calendars || {}, calendarsUnavailable: !!st.calendarsUnavailable, rooms: st.rooms || {}, lineStaff: st.lineStaff || {} };
     if (first) render(); else onData();
+    ensureLookups();
   }, err => { S.loadErr = U.errMsg(err); if (!S.data) render(); else U.toast(S.loadErr); });
 }
 store.onAuth(user => {

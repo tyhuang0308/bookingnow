@@ -4,7 +4,12 @@
 const CFG = window.BOOKING_CONFIG || {};
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
 const ORDER = [1, 2, 3, 4, 5, 6, 0];
-const COLORS = ['#3B5BDB', '#2F9E77', '#D9822B', '#C2417A', '#7A5AF8', '#5C7080'];
+// 研究人員代表色（莫蘭迪色）：鼠尾草綠、灰粉、霧藍、薰衣草、暖米。舊版存下的顏色會自動換成對應的新顏色
+const COLORS = ['#BCCCBF', '#DCC8CA', '#CCD8E4', '#D8D1E5', '#E3D8CB'];
+const OLD_COLORS = {
+  '#3B5BDB': '#CCD8E4', '#2F9E77': '#BCCCBF', '#D9822B': '#E3D8CB', '#C2417A': '#DCC8CA', '#7A5AF8': '#D8D1E5', '#5C7080': '#CCD8E4',
+  '#7F95A8': '#CCD8E4', '#8FA58C': '#BCCCBF', '#C7AE7E': '#E3D8CB', '#C29A94': '#DCC8CA', '#A190A8': '#D8D1E5', '#8A8F96': '#CCD8E4'
+};
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const pad = n => String(n).padStart(2, '0');
 const dstr = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
@@ -20,7 +25,7 @@ const U = {
   fmt: m => pad(Math.floor(m / 60)) + ':' + pad(m % 60),
   dLabel: s => { const d = parseD(s); return (d.getMonth() + 1) + '/' + d.getDate() + '（' + WD[d.getDay()] + '）'; },
   today: () => dstr(new Date()),
-  color: c => /^#[0-9a-fA-F]{6}$/.test(c || '') ? c : COLORS[5],
+  color: c => { c = OLD_COLORS[String(c || '').toUpperCase()] || c; return /^#[0-9a-fA-F]{6}$/.test(c || '') ? c : COLORS[0]; },
   num: (v, d) => { const n = Number(v); return Number.isFinite(n) ? n : d; },
   rid: () => rand(16, 'abcdefghijklmnopqrstuvwxyz0123456789'),
   genCode: () => rand(8, CODE_CHARS),
@@ -95,6 +100,23 @@ U.adminFrom = function () { const d = new Date(); return dstr(new Date(d.getFull
 
 U.isDemo = !(CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId);
 
+/* ---- 用「孩子姓名＋聯絡電話」查詢預約 ----
+   每筆預約另外存一份「查詢索引」，索引的名稱是姓名＋電話經過 SHA-256 運算後的一串亂碼，
+   資料庫裡看不到原本的姓名與電話；家長必須同時輸入正確的姓名與電話才算得出同一串亂碼。 */
+U.lookupName = v => String(v == null ? '' : v).normalize('NFKC').replace(/\s+/g, '');
+U.lookupPhone = v => {
+  let d = String(v == null ? '' : v).replace(/[^\d+]/g, '');
+  if (/^\+?886/.test(d)) d = '0' + d.replace(/^\+?886/, '');
+  return d.replace(/\D/g, '');
+};
+U.lookupKey = async function (name, phone) {
+  const n = U.lookupName(name), p = U.lookupPhone(phone);
+  if (!n || p.length < 8) throw new Error('請輸入孩子姓名與完整的聯絡電話');
+  if (!(window.crypto && crypto.subtle)) throw new Error('這個瀏覽器不支援姓名查詢，請改用預約代碼查詢');
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('booking-lookup|' + n + '|' + p));
+  return Array.from(new Uint8Array(buf)).map(x => x.toString(16).padStart(2, '0')).join('');
+};
+
 /* ================= Firebase ================= */
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 function loadScript(src) {
@@ -138,10 +160,11 @@ function firebaseStore(needAuth) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const bookingRef = F.db.collection('bookings').doc(), code = U.genCode(), ts = F.FV.serverTimestamp();
       const base = { staffId: st.id, staffName: st.name, date: p.date, start: p.start, end: p.end };
+      const lkKey = await U.lookupKey(p.name, p.phone).catch(() => ''), lkRef = lkKey ? F.db.doc('lookups/' + lkKey) : null;
       try {
         // 交易：同一天的預約會依序處理，確保同一時間的場地不會被重複預約
         await F.db.runTransaction(async tx => {
-          const roomSnap = await tx.get(roomRef), slotSnap = await tx.get(slotRef);
+          const roomSnap = await tx.get(roomRef), slotSnap = await tx.get(slotRef), lkSnap = lkRef ? await tx.get(lkRef) : null;
           if (slotSnap.exists) throw new Error(TAKEN);
           const room = roomSnap.exists ? roomSnap.data() : {};
           const b = Object.assign({}, room.b || {}), extra = room.extra || [];
@@ -153,6 +176,9 @@ function firebaseStore(needAuth) {
           tx.set(bookingRef, Object.assign({}, base, { name: p.name, round: p.round, phone: p.phone, email: p.email, note: p.note, status: 'booked', code, slotKey, createdAt: ts }, p.createdBy ? { createdBy: p.createdBy } : {}));
           tx.set(F.db.doc('tickets/' + code), Object.assign({}, base, { bookingId: bookingRef.id, slotKey, status: 'booked' }));
           tx.set(roomRef, { date: p.date, b, last: bookingRef.id, extra });
+          // 查詢索引：之後家長可以用孩子姓名＋電話找到這筆預約
+          const codes = lkSnap && lkSnap.exists ? (lkSnap.data().codes || []) : [];
+          if (lkRef && codes.length < 60) tx.set(lkRef, { codes: codes.concat([code]) });
         });
         return Object.assign({ code, status: 'booked' }, base);
       } catch (e) {
@@ -225,7 +251,32 @@ function firebaseStore(needAuth) {
     return moved;
   };
   /** 後台修改孩子姓名、第幾次評估、電話、Email */
-  S.updateBookingInfo = async (id, info) => { await ready; await F.db.doc('bookings/' + id).update(info); };
+  S.updateBookingInfo = async (id, info, code) => {
+    await ready;
+    await F.db.doc('bookings/' + id).update(info);
+    if (code && info.name && info.phone) await S.addLookups([{ code, name: info.name, phone: info.phone }]);
+  };
+  /** 後台：替還沒有查詢索引的預約補上索引（舊預約、後台改過姓名或電話的預約） */
+  S.addLookups = async function (list) {
+    await ready;
+    for (let i = 0; i < list.length; i += 400) {
+      const batch = F.db.batch();
+      for (const b of list.slice(i, i + 400)) {
+        const key = await U.lookupKey(b.name, b.phone).catch(() => '');
+        if (key) batch.set(F.db.doc('lookups/' + key), { codes: F.FV.arrayUnion(b.code) }, { merge: true });
+      }
+      await batch.commit();
+    }
+  };
+  /** 家長：用孩子姓名＋聯絡電話找出所有預約 */
+  S.findBookings = async function (name, phone) {
+    const key = await U.lookupKey(name, phone);
+    await ready;
+    const d = await F.db.doc('lookups/' + key).get();
+    if (!d.exists) return [];
+    const list = await Promise.all((d.data().codes || []).map(c => S.getTicket(c).catch(() => null)));
+    return list.filter(Boolean);
+  };
 
   S.getTicket = async function (code) {
     await ready;
@@ -394,6 +445,12 @@ function demoStore() {
     save(); return later(ticket(b));
   };
   S.updateBookingInfo = (id, info) => { const b = db.bookings.find(x => x.id === id); if (b) Object.assign(b, info); save(); return later(); };
+  S.addLookups = () => later();
+  S.findBookings = async (name, phone) => {
+    await U.lookupKey(name, phone);
+    const n = U.lookupName(name), ph = U.lookupPhone(phone);
+    return later(db.bookings.filter(b => U.lookupName(b.name) === n && U.lookupPhone(b.phone) === ph).map(ticket));
+  };
   S.getTicket = code => {
     const b = db.bookings.find(x => x.code === code);
     return b ? later(ticket(b)) : Promise.reject(new Error('找不到這個預約代碼，請確認是否輸入正確。'));
@@ -423,4 +480,16 @@ function demoStore() {
 
 U.createStore = needAuth => U.isDemo ? demoStore() : firebaseStore(needAuth);
 window.U = U;
+
+// 浮動導覽列：往下捲動後，玻璃變得稍微不透明、陰影稍微加深
+(function () {
+  let on = null;
+  const update = () => {
+    const top = document.querySelector('.top'); if (!top) return;
+    const v = window.scrollY > 8;
+    if (v !== on) { on = v; top.classList.toggle('scrolled', v); }
+  };
+  window.addEventListener('scroll', update, { passive: true });
+  document.addEventListener('DOMContentLoaded', update);
+})();
 })();

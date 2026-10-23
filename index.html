@@ -6,16 +6,36 @@
 <title>成大兒童敘事研究預約系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@300;400;500&display=swap">
-<link rel="stylesheet" href="style.css?v=20261022a">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css?v=20261023m">
 </head>
 <body>
 <div class="app">
-  <header class="top">
+  <header class="top hero">
     <div class="brand">
       <div class="seal" aria-hidden="true">約</div>
       <div><h1 id="biz-title">成大兒童敘事研究預約系統</h1><p id="biz-sub" class="sub"></p></div>
     </div>
+    <!-- 手繪風插圖：打開的故事書與對話泡泡（敘事研究） -->
+    <svg class="doodle" viewBox="0 0 340 150" aria-hidden="true" focusable="false">
+      <g fill="none" stroke="#1C1C1E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M206 18c18-9 52-8 66 6 14 15 4 36-20 41-12 3-26 2-36-2l-17 10 5-15c-9-8-12-20-5-29 2-4 4-8 7-11z" fill="#F6E39A"/>
+        <path d="M222 41.5h.5M240 41h.5M257 40.5h.5" stroke-width="4"/>
+        <path d="M40 116c36-13 78-14 128 0V58c-46-15-90-14-126 0z" fill="#FFFFFF"/>
+        <path d="M168 116c44-14 86-13 128 0l-2-58c-38-14-82-15-126 0z" fill="#FFFFFF"/>
+        <path d="M168 58v58"/>
+        <path d="M58 72c22-6 50-7 92-1M58 84c24-5 52-6 90 0M58 96c18-4 38-5 62-2"/>
+        <path d="M188 70c10-2 26-3 38-2l.5 30c-14-1-27 0-38 2z" fill="#E4EEE6"/>
+        <path d="M190 96c6-8 11-12 15-9 4 3 7 7 12-2 3-5 6-6 9-3"/>
+        <circle cx="214" cy="78" r="3" fill="#1C1C1E" stroke="none"/>
+        <path d="M240 72c14-3 28-3 40-1M240 84c14-2 28-2 40 0M240 96c10-2 20-2 30-1"/>
+        <path d="M36 122c40-13 86-14 132-1 46-14 92-14 132 1"/>
+        <path d="M312 40l12-22M318 26l10 4" stroke="#1C1C1E"/>
+        <path d="M296 30c2 6 2 6 8 8-6 2-6 2-8 8-2-6-2-6-8-8 6-2 6-2 8-8z" fill="#9CCBE8"/>
+        <path d="M60 30c1.5 4.5 1.5 4.5 6 6-4.5 1.5-4.5 1.5-6 6-1.5-4.5-1.5-4.5-6-6 4.5-1.5 4.5-1.5 6-6z" fill="#F2B0B0"/>
+        <path d="M92 18c1 3 1 3 4 4-3 1-3 1-4 4-1-3-1-3-4-4 3-1 3-1 4-4z"/>
+      </g>
+    </svg>
   </header>
   <div id="banner" class="banner" hidden></div>
   <div id="b-moving" class="moving" hidden></div>
@@ -34,18 +54,45 @@
   <section class="box">
     <h2>查詢、修改或取消預約</h2>
     <div id="b-device"></div>
-    <form id="lookup-form" class="lookup" novalidate>
-      <label class="field"><span>預約代碼（8 碼）</span><input type="text" id="l-code" class="mono" autocomplete="off" maxlength="8" style="text-transform:uppercase"></label>
+    <form id="lookup-form" class="lookup lookup-np" novalidate>
+      <label class="field"><span>孩子姓名</span><input type="text" id="l-name" autocomplete="off" maxlength="40"></label>
+      <label class="field"><span>聯絡電話</span><input type="tel" id="l-phone" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="0912345678"></label>
       <button type="submit" class="btn ghost" id="l-submit">查詢</button>
     </form>
+    <form id="code-form" class="lookup" novalidate hidden>
+      <label class="field"><span>預約代碼（8 碼）</span><input type="text" id="l-code" class="mono" autocomplete="off" maxlength="8" style="text-transform:uppercase"></label>
+      <button type="submit" class="btn ghost" id="c-lookup">查詢</button>
+    </form>
     <p class="err" id="l-err" role="alert"></p>
+    <p class="lookup-switch"><button type="button" class="linkbtn" data-act="lookup-mode" id="l-mode">改用預約代碼查詢</button></p>
     <div id="b-lookup"></div>
   </section>
 
+  <!-- 頁尾手繪插圖：鉛筆畫出一條小波浪線 -->
+  <footer class="foot" aria-hidden="true">
+    <svg class="foot-doodle" viewBox="0 0 240 96" focusable="false">
+      <g fill="none" stroke="#1C1C1E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 70c10-14 20-14 28 0s18 14 28 0 18-14 28 0c8 8 22 10 34 6"/>
+        <path d="M40 30c-3-6-11-4-10 2 1 5 10 10 10 10s9-5 10-10c1-6-7-8-10-2z" fill="#F2B0B0"/>
+        <g transform="rotate(-40 170 52)">
+          <path d="M146 46h44v12h-44z" fill="#F6E39A"/>
+          <path d="M190 46h9c2 0 3 1 3 3v6c0 2-1 3-3 3h-9z" fill="#DCC8CA"/>
+          <path d="M190 46v12"/>
+          <path d="M146 46l-14 6 14 6z" fill="#E3D8CB"/>
+          <path d="M136 50.3l-4 1.7 4 1.7z" fill="#1C1C1E"/>
+          <path d="M152 52h30"/>
+        </g>
+        <path d="M206 72c1.5 4.5 1.5 4.5 6 6-4.5 1.5-4.5 1.5-6 6-1.5-4.5-1.5-4.5-6-6 4.5-1.5 4.5-1.5 6-6z" fill="#9CCBE8"/>
+        <circle cx="74" cy="34" r="5" fill="#BCCCBF"/>
+        <path d="M100 22c1 3 1 3 4 4-3 1-3 1-4 4-1-3-1-3-4-4 3-1 3-1 4-4z"/>
+      </g>
+    </svg>
+  </footer>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="config.js?v=20261022a"></script>
-<script src="common.js?v=20261022a"></script>
-<script src="book.js?v=20261022a"></script>
+<script src="config.js?v=20261023m"></script>
+<script src="common.js?v=20261023m"></script>
+<script src="book.js?v=20261023m"></script>
 </body>
 </html>

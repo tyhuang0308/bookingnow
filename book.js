@@ -93,7 +93,7 @@ function renderForm() {
       ${d.moved && d.from ? `<p class="hint">原本：${esc(d.from.staffName)} ${dLabel(d.from.date)} ${fmt(d.from.start)}</p>` : ''}
       <p>${d.moved ? '新的時段：' : ''}<b>${esc(d.staffName)}</b>　<span class="when">${dLabel(d.date)} ${fmt(d.start)}</span></p>
       <p>預約代碼${d.moved ? '（不變）' : ''}</p><p class="code">${esc(d.code)}</p>
-      <p class="hint">請截圖或記下此預約代碼。需要查詢、修改或取消時，可至下方「查詢、修改或取消預約」輸入預約代碼即可</p>
+      <p class="hint">請截圖或記下此預約代碼。需要查詢、修改或取消時，可至下方「查詢、修改或取消預約」輸入孩子姓名與聯絡電話即可</p>
       <div><button type="button" class="btn ghost small" data-act="again">再預約一個時段</button></div></div>`;
     return;
   }
@@ -205,7 +205,7 @@ async function submitMove() {
     S.busy = false;
     S.done = Object.assign({}, r, { code: m.code, moved: true, from: { staffName: m.staffName, date: m.date, start: m.start } });
     S.device = S.device.filter(x => x.code !== m.code).concat([{ code: m.code, staffName: r.staffName, date: r.date, start: r.start, end: r.end }]); saveDevice();
-    if (S.found && S.found.code === m.code) S.found = Object.assign({}, S.found, r, { code: m.code });
+    if (S.found) S.found = S.found.map(x => x.code === m.code ? Object.assign({}, x, r, { code: m.code }) : x);
     S.moving = null; S.sel.start = null;
     renderMoving(); renderForm(); renderTimes(); renderDates(); renderDevice(); renderLookup();
     U.toast('已修改預約');
@@ -220,17 +220,21 @@ function row(b, extra) {
 function renderDevice() {
   const el = $('b-device');
   const list = S.device.filter(b => b.date >= today()).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
-  if (!list.length) { el.innerHTML = '<p class="hint">輸入預約成功時拿到的預約代碼，即可查看、修改或取消預約</p>'; return; }
+  if (!list.length) { el.innerHTML = '<p class="hint">輸入預約時填寫的孩子姓名與聯絡電話，即可查看、修改或取消預約</p>'; return; }
   el.innerHTML = '<p class="hint" style="margin-bottom:4px">你在這台裝置上預約的時段：</p><div class="blist">' +
     list.map(b => row(b, `<span class="mono hint">${esc(b.code)}</span>` + cancelControls('dev:' + b.code, 'cancel', `data-code="${esc(b.code)}"`))).join('') +
-    '</div><p class="hint" style="margin-top:10px">也可以輸入預約代碼查詢其他預約：</p>';
+    '</div><p class="hint" style="margin-top:10px">也可以輸入孩子姓名與聯絡電話，查詢其他預約：</p>';
 }
 function renderLookup() {
-  const el = $('b-lookup'), b = S.found;
-  if (!b) { el.innerHTML = ''; return; }
-  const pill = b.status === 'booked' ? '' : '<span class="pill no">已取消</span>';
-  const canCancel = b.status === 'booked' && b.date >= today();
-  el.innerHTML = '<div class="blist">' + row(b, pill + (canCancel ? cancelControls('found', 'cancel', `data-code="${esc(b.code)}"`) : '')) + '</div>';
+  const el = $('b-lookup');
+  if (!S.found) { el.innerHTML = ''; return; }
+  // 未來的預約排前面；已取消或已過去的預約只顯示、不能操作
+  const t = today(), upcoming = x => x.status === 'booked' && x.date >= t;
+  const list = S.found.slice().sort((a, b) => (upcoming(b) - upcoming(a)) || a.date.localeCompare(b.date) || a.start - b.start);
+  el.innerHTML = '<p class="hint" style="margin:4px 0">查到的預約：</p><div class="blist">' + list.map(b => {
+    const pill = b.status !== 'booked' ? '<span class="pill no">已取消</span>' : b.date < t ? '<span class="pill">已結束</span>' : '';
+    return row(b, pill + (upcoming(b) ? cancelControls('found:' + b.code, 'cancel', `data-code="${esc(b.code)}"`) : ''));
+  }).join('') + '</div>';
 }
 async function cancel(code, btn) {
   btn.disabled = true;
@@ -238,7 +242,7 @@ async function cancel(code, btn) {
     await store.cancelByCode(code);
     U.toast('已取消預約 ' + code);
     if (S.moving && S.moving.code === code) stopMove();
-    if (S.found && S.found.code === code) S.found.status = 'cancelled';
+    if (S.found) S.found = S.found.map(x => x.code === code ? Object.assign({}, x, { status: 'cancelled' }) : x);
     S.device = S.device.filter(x => x.code !== code); saveDevice();
   } catch (e) {
     const m = U.errMsg(e); U.toast(m);
@@ -271,22 +275,42 @@ document.addEventListener('click', e => {
     case 'cancel': cancel(b.dataset.code, b); break;
     case 'move': startMove(b.dataset.code, b); break;
     case 'move-cancel': stopMove(); break;
+    case 'lookup-mode': {
+      const byCode = $('code-form').hidden;
+      $('code-form').hidden = !byCode; $('lookup-form').hidden = byCode; $('l-err').textContent = '';
+      b.textContent = byCode ? '改用孩子姓名與電話查詢' : '改用預約代碼查詢';
+      (byCode ? $('l-code') : $('l-name')).focus();
+      break;
+    }
   }
 });
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset && t.dataset.cf) { S.form[t.dataset.cf] = t.value; const er = $('c-err'); if (er) er.textContent = ''; }
-  if (t.id === 'l-code') $('l-err').textContent = '';
+  if (t.id === 'l-code' || t.id === 'l-name' || t.id === 'l-phone') $('l-err').textContent = '';
 });
 document.addEventListener('submit', async e => {
   e.preventDefault();
   if (e.target.id === 'book-form') submitBooking();
   if (e.target.id === 'move-form') submitMove();
   if (e.target.id === 'lookup-form') {
-    const code = $('l-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''), btn = $('l-submit');
+    const name = $('l-name').value.trim(), phone = $('l-phone').value.trim(), btn = $('l-submit'), er = $('l-err');
+    if (!name) { er.textContent = '請輸入孩子姓名'; $('l-name').focus(); return; }
+    if (!mobile(phone)) { er.textContent = '請輸入預約時填寫的手機號碼，例如0912345678'; $('l-phone').focus(); return; }
+    btn.disabled = true;
+    try {
+      const list = await store.findBookings(name, phone);
+      S.confirm = null;
+      if (!list.length) { S.found = null; er.textContent = '查不到預約，請確認孩子姓名與電話是否和預約時填寫的一樣，或改用預約代碼查詢'; }
+      else { S.found = list; er.textContent = ''; }
+    } catch (err) { S.found = null; er.textContent = U.errMsg(err); }
+    btn.disabled = false; renderLookup();
+  }
+  if (e.target.id === 'code-form') {
+    const code = $('l-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''), btn = $('c-lookup');
     if (code.length !== 8) { $('l-err').textContent = '預約代碼是 8 碼英文與數字，請再確認一次。'; return; }
     btn.disabled = true;
-    try { S.found = await store.getTicket(code); S.confirm = null; $('l-err').textContent = ''; }
+    try { S.found = [await store.getTicket(code)]; S.confirm = null; $('l-err').textContent = ''; }
     catch (err) { S.found = null; $('l-err').textContent = U.errMsg(err); }
     btn.disabled = false; renderLookup();
   }

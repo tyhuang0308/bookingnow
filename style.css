@@ -364,6 +364,61 @@ td.mono,td .mono{font-family:var(--f-code);font-size:.8125rem;letter-spacing:.04
 .spread{animation:rise .35s var(--ease) .06s both}
 .box{animation:rise .35s var(--ease) .12s both}
 
+/* ---------- 手機（特別是 iPhone Safari）版面修正 ---------- */
+/* 日期、時間欄位：取消瀏覽器原生外觀，高度、對齊與其他輸入框一致，也不會撐出畫面 */
+input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;display:block;height:42px;min-width:0;max-width:100%;line-height:1.2;text-align:left;background-color:var(--surface)}
+input[type=date]::-webkit-date-and-time-value,input[type=time]::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.2em}
+input[type=date]::-webkit-datetime-edit,input[type=time]::-webkit-datetime-edit{padding:0}
+/* 下拉選單：同樣的高度與圓角，右邊畫一個小箭頭 */
+select{-webkit-appearance:none;appearance:none;height:42px;padding-right:36px;line-height:1.2;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%236B6B6E' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 14px center/11px 8px}
+/* 研究人員設定：開放預約到、休假日期 */
+.closed-row input[type=date]{width:160px}
+.closed-row .range input[type=time]{width:136px}
+/* LINE 通知：狀態文字與「LINE通知」標題同樣大小；兩個按鈕在同一行 */
+.line-st > span:first-child{font-size:.9375rem;font-weight:400}
+.line-st > span:first-child b{font-weight:500}
+/* 時段預覽：數字與其他文字同樣大小 */
+.wk-total b{font:inherit;font-weight:500}
+/* 每週開放時段：時間欄位固定寬度，叉叉在同一行 */
+.range{flex-wrap:nowrap}
+.range input[type=time]{width:136px;flex:none}
+@media (max-width:820px){
+  /* iPhone 在輸入框字小於 16px 時會自動放大畫面，統一用 16px 避免 */
+  input[type=text],input[type=tel],input[type=email],input[type=number],input[type=time],input[type=date],textarea,select{font-size:16px}
+  /* 頁首：Email 一行，兩個按鈕同一行 */
+  .top:not(.hero) .topnav{width:100%;gap:8px}
+  .top:not(.hero) .me{flex-basis:100%}
+  .line-st > span:first-child{flex-basis:100%}
+}
+@media (max-width:560px){
+  .wrow{grid-template-columns:62px minmax(0,1fr);gap:6px}
+  .wday{white-space:nowrap;gap:6px}
+  .range{gap:4px}
+  .range input[type=time]{width:106px;padding:8px 8px;font-size:15px;height:38px}
+  input[type=time]::-webkit-calendar-picker-indicator{display:none}
+  .custom-time input[type=time]{padding:8px 10px}
+  .range .icon{width:28px;height:28px;flex:none}
+  .closed-row input[type=date]{width:100%;flex:1 1 100%}
+  /* 自訂評估時間：開始與結束並排 */
+  .custom-time{flex-wrap:nowrap;gap:6px}
+  .custom-time .field{width:auto;flex:1 1 0;min-width:0}
+  /* 預約紀錄：每筆改成卡片式排列，不用左右滑動 */
+  .tw{overflow-x:visible}
+  .tw table{min-width:0}
+  .tw table,.tw tbody{display:block}
+  .tw tr{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .tw td{display:block;padding:0;border:0;min-width:0}
+  .tw td.tm{width:auto}
+  .tw td.st{white-space:normal}
+  .tw td:nth-child(3),.tw td:nth-child(4),.tw td.ac{grid-column:1/-1}
+  .tw td .nt{overflow-wrap:anywhere}
+  .tw td.ac{text-align:left;white-space:normal;padding-top:6px}
+  .tw td.ac .acts{justify-content:flex-start}
+  .bk-head .topnav{width:100%}
+  .bk-head .field{flex:1}
+  .bk-head select{flex:1;width:100%}
+}
+
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{transition:none!important;animation:none!important}
   .staff-card,.day,.slot,.btn,.arrow{transform:none!important}

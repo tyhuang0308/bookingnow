@@ -6,8 +6,29 @@ const store = U.createStore(false);
 const S = {
   pub: { staff: [], slots: [], rooms: {} }, loaded: false, loadErr: '',
   sel: { staffId: null, date: null, start: null }, month: null, form: { name: '', round: '', phone: '', email: '', note: '' },
-  done: null, busy: false, device: [], found: null, confirm: null, moving: null
+  done: null, busy: false, device: [], found: null, confirm: null, moving: null, open: null
 };
+
+/* 首頁兩大方塊：一次只展開一個；網址加 #book 或 #lookup 可以直接展開（例如 LINE 選單的連結） */
+const ACC = { book: 'acc-book', look: 'acc-look' };
+function setOpen(v, scroll) {
+  const prev = S.open;
+  S.open = S.open === v ? null : v;
+  for (const k of Object.keys(ACC)) {
+    const on = S.open === k, sec = $(ACC[k]);
+    sec.classList.toggle('open', on);
+    $(ACC[k] + '-head').setAttribute('aria-expanded', String(on));
+    const body = $(ACC[k] + '-body');
+    if (on) body.removeAttribute('inert'); else body.setAttribute('inert', '');
+  }
+  $('choose').classList.toggle('has-open', !!S.open);
+  try { history.replaceState(null, '', location.pathname + location.search + (S.open === 'book' ? '#book' : S.open === 'look' ? '#lookup' : '')); } catch (e) { /* 略過 */ }
+  // 另一個方塊收起來後，畫面位置會跳動，所以把剛展開的方塊捲到畫面上方
+  // 等展開的動畫結束（頁面變長）後再捲動，否則頁面還太短、捲不到
+  if (S.open && (scroll || (prev && prev !== S.open))) scrollToPanel(S.open, 340);
+}
+function scrollToPanel(v, wait) { const k = v; setTimeout(() => { if (S.open === k) $(ACC[k]).scrollIntoView({ block: 'start', behavior: 'smooth' }); }, wait); }
+function openPanel(v, scroll) { if (S.open !== v) setOpen(v, scroll); else if (scroll) scrollToPanel(v, 0); }
 
 const activeStaff = () => S.pub.staff.filter(s => s.active !== false && s.name).sort((a, b) => num(a.order, 0) - num(b.order, 0));
 const selStaff = () => activeStaff().find(s => s.id === S.sel.staffId) || null;
@@ -93,7 +114,7 @@ function renderForm() {
       ${d.moved && d.from ? `<p class="hint">原本：${esc(d.from.staffName)} ${dLabel(d.from.date)} ${fmt(d.from.start)}</p>` : ''}
       <p>${d.moved ? '新的時段：' : ''}<b>${esc(d.staffName)}</b>　<span class="when">${dLabel(d.date)} ${fmt(d.start)}</span></p>
       <p>預約代碼${d.moved ? '（不變）' : ''}</p><p class="code">${esc(d.code)}</p>
-      <p class="hint">請截圖或記下此預約代碼。需要查詢、修改或取消時，可至下方「查詢、修改或取消預約」輸入孩子姓名與聯絡電話即可</p>
+      <p class="hint">請截圖或記下此預約代碼。需要查詢、修改或取消時，可點選下方「查詢、修改或取消評估」，輸入孩子姓名與聯絡電話即可</p>
       <div><button type="button" class="btn ghost small" data-act="again">再預約一個時段</button></div></div>`;
     return;
   }
@@ -186,7 +207,7 @@ async function startMove(code, btn) {
     S.sel = { staffId: ok ? t.staffId : null, date: ok ? t.date : null, start: null };
     S.month = t.date.slice(0, 7);
     renderMoving(); renderStaffCards(); renderDates(); renderTimes(); renderForm(); renderDevice(); renderLookup();
-    $('b-moving').scrollIntoView({ block: 'start', behavior: 'smooth' });
+    openPanel('book', true);
   } catch (e) { U.toast(U.errMsg(e)); }
   finally { if (btn) btn.disabled = false; }
 }
@@ -220,6 +241,8 @@ function row(b, extra) {
 function renderDevice() {
   const el = $('b-device');
   const list = S.device.filter(b => b.date >= today()).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+  const sub = $('acc-look-sub');
+  if (sub) sub.textContent = list.length ? `這台裝置有 ${list.length} 筆預約，點開即可查看或修改` : '用孩子姓名與電話查看已預約的評估';
   if (!list.length) { el.innerHTML = '<p class="hint">輸入預約時填寫的孩子姓名與聯絡電話，即可查看、修改或取消預約</p>'; return; }
   el.innerHTML = '<p class="hint" style="margin-bottom:4px">你在這台裝置上預約的時段：</p><div class="blist">' +
     list.map(b => row(b, `<span class="mono hint">${esc(b.code)}</span>` + cancelControls('dev:' + b.code, 'cancel', `data-code="${esc(b.code)}"`))).join('') +
@@ -256,6 +279,7 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   switch (b.dataset.act) {
     case 'reload': location.reload(); break;
+    case 'acc': setOpen(b.dataset.v, false); break;
     case 'pick-staff':
       if (S.sel.staffId !== b.dataset.id) { S.sel = { staffId: b.dataset.id, date: null, start: null }; S.month = null; }
       S.done = null; renderStaffCards(); renderDates(); renderTimes(); renderForm(); break;
@@ -319,6 +343,7 @@ document.addEventListener('submit', async e => {
 /* 啟動 */
 loadDevice();
 renderHeader(); renderDevice();
+if (/^#(book|lookup)$/.test(location.hash)) setOpen(location.hash === '#book' ? 'book' : 'look', false);
 store.subscribePublic(st => {
   S.pub = { staff: st.staff || [], slots: st.slots || [], rooms: st.rooms || {} };
   S.loaded = !!(st.got.staff && st.got.slots && st.got.rooms); S.loadErr = '';

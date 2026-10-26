@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500&display=swap">
-<link rel="stylesheet" href="style.css?v=20261026a">
+<link rel="stylesheet" href="style.css?v=20261024b">
 </head>
 <body>
 <div class="app">
@@ -38,74 +38,35 @@
     </svg>
   </header>
   <div id="banner" class="banner" hidden></div>
-  <!-- 首頁：兩個大方塊，點選後展開該部分的內容 -->
-  <div class="choose" id="choose">
-    <section class="acc" id="acc-book">
-      <button type="button" class="acc-head" id="acc-book-head" data-act="acc" data-v="book" aria-expanded="false" aria-controls="acc-book-body">
-        <svg class="acc-ic" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
-          <g fill="none" stroke="#1C1C1E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10 16c0-2 1.5-3.5 3.5-3.5h29c2 0 3.5 1.5 3.5 3.5v25c0 2-1.5 3.5-3.5 3.5h-29c-2 0-3.5-1.5-3.5-3.5z" fill="#FFFFFF"/>
-            <path d="M10 16c0-2 1.5-3.5 3.5-3.5h29c2 0 3.5 1.5 3.5 3.5v6H10z" fill="#BCCCBF"/>
-            <path d="M19 8.5v8M37 8.5v8"/>
-            <path d="M17.5 30h.5M25.5 30h.5M33.5 30h.5M17.5 37h.5M25.5 37h.5" stroke-width="3"/>
-            <path d="M31 36.5l2.6 2.6 5-5.4"/>
-          </g>
-        </svg>
-        <span class="acc-tt"><span class="acc-title">預約評估</span><span class="acc-sub" id="acc-book-sub">預約一個新的評估時段</span></span>
-        <span class="acc-chev" aria-hidden="true"></span>
-      </button>
-      <div class="acc-body" id="acc-book-body" role="region" aria-labelledby="acc-book-head" inert>
-        <div class="acc-inner">
-          <div id="b-moving" class="moving" hidden></div>
-          <div class="spread">
-            <section class="page left">
-              <div class="step"><h2><span class="num">1</span>選擇研究人員</h2><div id="b-staff" class="staff-cards"><p class="hint">正在載入可預約的時段…</p></div></div>
-              <div class="step"><h2><span class="num">2</span>選擇日期</h2><div id="b-dates"><p class="hint">先選擇研究人員</p></div></div>
-            </section>
-            <section class="page right">
-              <div class="step"><h2><span class="num">3</span>選擇時段</h2><div id="b-times"><p class="hint">選擇研究人員與日期後，這裡會列出可預約的時段</p></div></div>
-              <div class="step"><h2><span class="num">4</span>填寫聯絡資料</h2><div id="b-form"><p class="hint">選擇時段後，填寫聯絡資料</p></div><div id="b-contact" class="notice"><p>若有任何疑問，歡迎至Line官方帳號詢問，謝謝！</p></div></div>
-            </section>
-          </div>
-        </div>
-      </div>
-    </section>
+  <div id="b-moving" class="moving" hidden></div>
 
-    <section class="acc" id="acc-look">
-      <button type="button" class="acc-head" id="acc-look-head" data-act="acc" data-v="look" aria-expanded="false" aria-controls="acc-look-body">
-        <svg class="acc-ic" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
-          <g fill="none" stroke="#1C1C1E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M13 9.5h21l9 9v28c0 1.5-1 2.5-2.5 2.5h-27.5c-1.5 0-2.5-1-2.5-2.5v-34.5c0-1.5 1-2.5 2.5-2.5z" fill="#FFFFFF"/>
-            <path d="M34 9.5v9h9" fill="#E3D8CB"/>
-            <path d="M17 22h11M17 29h8"/>
-            <circle cx="31" cy="35" r="7" fill="#CCD8E4"/>
-            <path d="M36 40.5l6 6"/>
-          </g>
-        </svg>
-        <span class="acc-tt"><span class="acc-title">查詢、修改或取消評估</span><span class="acc-sub" id="acc-look-sub">用孩子姓名與電話查看已預約的評估</span></span>
-        <span class="acc-chev" aria-hidden="true"></span>
-      </button>
-      <div class="acc-body" id="acc-look-body" role="region" aria-labelledby="acc-look-head" inert>
-        <div class="acc-inner">
-          <div class="box">
-            <div id="b-device"></div>
-            <form id="lookup-form" class="lookup lookup-np" novalidate>
-              <label class="field"><span>孩子姓名</span><input type="text" id="l-name" autocomplete="off" maxlength="40"></label>
-              <label class="field"><span>聯絡電話</span><input type="tel" id="l-phone" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="0912345678"></label>
-              <button type="submit" class="btn ghost" id="l-submit">查詢</button>
-            </form>
-            <form id="code-form" class="lookup" novalidate hidden>
-              <label class="field"><span>預約代碼（8 碼）</span><input type="text" id="l-code" class="mono" autocomplete="off" maxlength="8" style="text-transform:uppercase"></label>
-              <button type="submit" class="btn ghost" id="c-lookup">查詢</button>
-            </form>
-            <p class="err" id="l-err" role="alert"></p>
-            <p class="lookup-switch"><button type="button" class="linkbtn" data-act="lookup-mode" id="l-mode">改用預約代碼查詢</button></p>
-            <div id="b-lookup"></div>
-          </div>
-        </div>
-      </div>
+  <div class="spread">
+    <section class="page left">
+      <div class="step"><h2><span class="num">1</span>選擇研究人員</h2><div id="b-staff" class="staff-cards"><p class="hint">正在載入可預約的時段…</p></div></div>
+      <div class="step"><h2><span class="num">2</span>選擇日期</h2><div id="b-dates"><p class="hint">先選擇研究人員</p></div></div>
+    </section>
+    <section class="page right">
+      <div class="step"><h2><span class="num">3</span>選擇時段</h2><div id="b-times"><p class="hint">選擇研究人員與日期後，這裡會列出可預約的時段</p></div></div>
+      <div class="step"><h2><span class="num">4</span>填寫聯絡資料</h2><div id="b-form"><p class="hint">選擇時段後，填寫聯絡資料</p></div><div id="b-contact" class="notice"><p>若有任何疑問，歡迎至Line官方帳號詢問，謝謝！</p></div></div>
     </section>
   </div>
+
+  <section class="box">
+    <h2>查詢、修改或取消預約</h2>
+    <div id="b-device"></div>
+    <form id="lookup-form" class="lookup lookup-np" novalidate>
+      <label class="field"><span>孩子姓名</span><input type="text" id="l-name" autocomplete="off" maxlength="40"></label>
+      <label class="field"><span>聯絡電話</span><input type="tel" id="l-phone" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="0912345678"></label>
+      <button type="submit" class="btn ghost" id="l-submit">查詢</button>
+    </form>
+    <form id="code-form" class="lookup" novalidate hidden>
+      <label class="field"><span>預約代碼（8 碼）</span><input type="text" id="l-code" class="mono" autocomplete="off" maxlength="8" style="text-transform:uppercase"></label>
+      <button type="submit" class="btn ghost" id="c-lookup">查詢</button>
+    </form>
+    <p class="err" id="l-err" role="alert"></p>
+    <p class="lookup-switch"><button type="button" class="linkbtn" data-act="lookup-mode" id="l-mode">改用預約代碼查詢</button></p>
+    <div id="b-lookup"></div>
+  </section>
 
   <!-- 頁尾手繪插圖：鉛筆畫出一條小波浪線 -->
   <footer class="foot" aria-hidden="true">
@@ -130,8 +91,8 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="config.js?v=20261026a"></script>
-<script src="common.js?v=20261026a"></script>
-<script src="book.js?v=20261026a"></script>
+<script src="config.js?v=20261024b"></script>
+<script src="common.js?v=20261024b"></script>
+<script src="book.js?v=20261024b"></script>
 </body>
 </html>

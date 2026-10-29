@@ -50,7 +50,9 @@ function render() {
   root.innerHTML = `<div class="tabs" role="tablist">${tab('staff', '研究人員與時段')}${tab('bookings', '預約紀錄')}${tab('accounts', '研究人員帳號')}</div>
     <div class="tabgap"></div>
     <div id="a-staff" class="admin-grid" ${S.atab === 'staff' ? '' : 'hidden'}><aside class="panel" id="a-list"></aside><section class="panel" id="a-editor"></section></div>
-    <div id="a-bookings" class="panel" ${S.atab === 'bookings' ? '' : 'hidden'}></div>
+    <div class="bk-wrap" ${S.atab === 'bookings' ? '' : 'hidden'}><div id="a-bookings" class="panel"></div>
+      <!-- 受試者預約進度：點選預約紀錄的某一筆時，在旁邊顯示同一位受試者的所有預約 -->
+      <aside id="pp" class="pp" role="dialog" aria-labelledby="pp-title" hidden></aside></div>
     <div id="a-accounts" class="panel" ${S.atab === 'accounts' ? '' : 'hidden'}></div>`;
   if (S.atab === 'staff') { renderStaffList(); renderEditor(); }
   if (S.atab === 'bookings') renderBookings();
@@ -370,7 +372,8 @@ function renderPerson() {
   (p.hist || []).forEach(b => { m[b.id] = b; });
   live.forEach(b => { m[b.id] = b; });
   const byTime = (a, c) => a.date.localeCompare(c.date) || a.start - c.start;
-  const all = Object.values(m).filter(b => b && b.date);
+  // 已取消的預約不列出
+  const all = Object.values(m).filter(b => b && b.date && b.status === 'booked');
   const mine = all.filter(b => personRel(b, p) === 'same').sort(byTime);
   const maybe = all.filter(b => personRel(b, p) === 'maybe').sort(byTime);
   const t = today();
@@ -383,13 +386,13 @@ function renderPerson() {
   }).join('');
   const note = p.loading ? '正在查詢更早的預約紀錄…'
     : p.err ? `無法查詢兩個月前的紀錄（${esc(p.err)}），目前只列出最近兩個月起的預約`
-      : '依孩子姓名＋聯絡電話比對，包含已取消與較早的紀錄';
-  el.innerHTML = `<div class="pp-head"><div><p class="pp-k">受試者預約進度</p><h3 id="pp-title">${esc(p.name)}</h3><p class="hint">${esc(p.phone)}${p.email ? ' · ' + esc(p.email) : ''}</p></div>
+      : '依孩子姓名＋聯絡電話比對，包含兩個月前的紀錄；已取消的預約不列出';
+  el.innerHTML = `<div class="pp-in"><div class="pp-head"><div><p class="pp-k">受試者預約進度</p><h3 id="pp-title">${esc(p.name)}</h3><p class="hint">${esc(p.phone)}${p.email ? ' · ' + esc(p.email) : ''}</p></div>
       <button type="button" class="icon pp-x" data-act="pp-close" aria-label="關閉">×</button></div>
     <ol class="pp-steps" aria-label="評估進度">${steps}</ol>
     <div class="pp-sec"><h4>所有預約（${mine.length} 筆）</h4>${mine.map(b => ppItem(b, p, false)).join('') || '<p class="hint">找不到這位受試者的預約</p>'}</div>
     ${maybe.length ? `<div class="pp-sec"><h4>可能相關（只有姓名或電話相同）</h4><p class="pp-note">可能是兄弟姊妹，或預約時姓名、電話填寫不一致</p>${maybe.map(b => ppItem(b, p, true)).join('')}</div>` : ''}
-    <p class="pp-note">${note}</p>`;
+    <p class="pp-note">${note}</p></div>`;
 }
 
 /* ---------- 後台新增／修改預約 ---------- */

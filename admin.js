@@ -6,7 +6,7 @@ const store = U.createStore(true);
 const S = {
   user: undefined, isAdmin: null, data: null, unsub: null, loadErr: '',
   atab: 'staff', editingId: null, draft: null, confirm: null, filter: 'all', bkMonth: null, bkDay: null,
-  bkForm: null, bkDone: null, lineCode: null
+  bkForm: null, bkDone: null, lineCode: null, person: null
 };
 const aStaff = () => ((S.data && S.data.staff) || []).filter(s => s.name).sort((a, b) => num(a.order, 0) - num(b.order, 0));
 const GLOGO = '<svg class="gmark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
@@ -55,6 +55,7 @@ function render() {
   if (S.atab === 'staff') { renderStaffList(); renderEditor(); }
   if (S.atab === 'bookings') renderBookings();
   if (S.atab === 'accounts') renderAccounts();
+  renderPerson();
 }
 
 /* 資料更新時只重畫不會打斷編輯的部分 */
@@ -64,6 +65,7 @@ function onData() {
   if (S.atab === 'staff') { renderStaffList(); if (!S.draft) renderEditor(); else if ($('line-st')) $('line-st').innerHTML = lineStatus(S.editingId); }
   if (S.atab === 'bookings') { if (S.bkForm) readBkForm(); renderBookings(); }
   if (S.atab === 'accounts') renderAccounts();
+  renderPerson();
 }
 
 /* ---------- 研究人員與時段 ---------- */
@@ -288,14 +290,16 @@ function renderBookings() {
       const reopenBtn = past ? '' : (covered(b)
         ? `<button type="button" class="btn ghost small" data-act="unreopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}">取消加開</button>`
         : `<button type="button" class="btn ghost small" data-act="reopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}">重新開放此時段</button>`);
-      detail += `<tr><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
-        <td><b>${esc(b.name)}</b>${b.round ? `<span class="tag">第${b.round}次</span>` : ''}${b.createdBy ? '<span class="tag">後台代約</span>' : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
+      const sel = S.person && S.person.id === b.id ? ' class="is-sel"' : '';
+      detail += `<tr data-act="person" data-id="${esc(b.id)}"${sel}><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
+        <td><button type="button" class="pname" data-act="person" data-id="${esc(b.id)}" title="查看這位受試者的所有預約">${esc(b.name)}</button>${b.round ? `<span class="tag">第${b.round}次</span>` : ''}${b.createdBy ? '<span class="tag">後台代約</span>' : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
         <td><div class="nt mono">${esc(b.code || '')}</div>${sync}</td>
         <td class="ac">${S.confirm === k
           ? `<span class="confirm">取消這筆？<button type="button" class="btn danger small" data-act="bk-cancel" data-id="${esc(b.id)}">確定取消</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
           : `<span class="acts">${reopenBtn}${past ? '' : `<button type="button" class="btn ghost small" data-act="bf-edit" data-id="${esc(b.id)}">修改</button><button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">取消預約</button>`}</span>`}</td></tr>`;
     }
     detail += '</tbody></table></div>';
+    if (!S.person) detail += '<p class="hint" style="padding-top:10px">點選任一筆預約，可以在旁邊查看這位受試者其他次的預約日期與時段</p>';
   }
   if (extras.length) {
     detail += `<div class="extras"><p class="hint">已加開場地（這些時段其他研究人員可以再被預約）：</p>${extras.slice().sort((a, b) => a.s - b.s).map(x =>
@@ -314,6 +318,80 @@ function renderBookings() {
     <div class="bkc">${cal}</div>
     ${detail}`;
 }
+/* ---------- 受試者預約進度（點選預約紀錄的某一筆時，在旁邊顯示同一位受試者的所有預約） ---------- */
+/* 同一位受試者＝孩子姓名＋聯絡電話相同（忽略空格、+886 等寫法差異）；只有姓名或只有電話相同的列為「可能相關」 */
+function personRel(b, p) {
+  const n = U.lookupName(b.name) && U.lookupName(b.name) === U.lookupName(p.name);
+  const ph = U.lookupPhone(b.phone) && U.lookupPhone(b.phone) === U.lookupPhone(p.phone);
+  return n && ph ? 'same' : (n || ph) ? 'maybe' : '';
+}
+function openPerson(id) {
+  const b = (S.data.bookings || []).find(x => x.id === id); if (!b) return;
+  if (S.person && S.person.id === id) return;
+  // 同一位受試者的另一筆：保留已查到的舊紀錄，只換目前選取的那一筆
+  if (S.person && personRel(b, S.person) === 'same') { S.person.id = id; markSel(); renderPerson(); return; }
+  const p = S.person = { id, name: b.name, phone: b.phone, email: b.email || '', hist: null, loading: true, err: '' };
+  markSel(); renderPerson();
+  store.personBookings(String(b.name || '').trim(), String(b.phone || '').trim())
+    .then(list => { if (S.person === p) p.hist = list; })
+    .catch(e => { if (S.person === p) p.err = U.errMsg(e); })
+    .finally(() => { if (S.person === p) { p.loading = false; renderPerson(); } });
+}
+function closePerson() { S.person = null; markSel(); renderPerson(); }
+function markSel() {
+  document.querySelectorAll('#a-bookings tr[data-id]').forEach(tr => tr.classList.toggle('is-sel', !!S.person && tr.dataset.id === S.person.id));
+}
+function ppDate(d) { return (d.slice(0, 4) !== today().slice(0, 4) ? d.slice(0, 4) + '/' : '') + dLabel(d); }
+function ppState(b) {
+  const t = today();
+  if (b.status !== 'booked') return { cls: 'no', txt: '已取消' };
+  if (b.date < t) return { cls: '', txt: '已結束' };
+  if (b.date === t) return { cls: 'ok', txt: '今天' };
+  return { cls: 'up', txt: '即將到來' };
+}
+function ppItem(b, p, showWho) {
+  const st = aStaff().find(s => s.id === b.staffId), stt = ppState(b);
+  const meta = [esc(st ? st.name : b.staffName), b.round ? `第${esc(b.round)}次` : '', showWho ? esc(b.name) + ' · ' + esc(b.phone) : ''].filter(Boolean).join(' · ');
+  const inner = `<span class="dot" style="background:${color(st && st.color)}"></span><span class="pp-when">${ppDate(b.date)} ${fmt(b.start)}–${fmt(b.end)}</span><span class="pill ${stt.cls}">${stt.txt}</span><span class="pp-meta">${meta}</span>`;
+  const cls = `pp-item${b.id === p.id ? ' is-cur' : ''}${b.status !== 'booked' ? ' is-off' : ''}`;
+  // 月曆有載入的日期才能點過去（後台只載入兩個月前起的紀錄）
+  return b.status === 'booked' && b.date >= U.adminFrom()
+    ? `<button type="button" class="${cls}" data-act="pp-go" data-id="${esc(b.id)}" data-d="${esc(b.date)}" aria-label="到 ${dLabel(b.date)} 查看這筆預約"${b.id === p.id ? ' aria-current="true"' : ''}>${inner}</button>`
+    : `<div class="${cls}">${inner}</div>`;
+}
+function renderPerson() {
+  const el = $('pp'); if (!el) return;
+  const p = S.person, on = !!(p && S.data && S.user && S.isAdmin && S.atab === 'bookings');
+  el.hidden = !on; document.documentElement.classList.toggle('pp-open', on);
+  if (!on) { el.innerHTML = ''; return; }
+  const live = S.data.bookings || [], cur = live.find(x => x.id === p.id);
+  if (cur) Object.assign(p, { name: cur.name, phone: cur.phone, email: cur.email || '' });
+  const m = {};
+  (p.hist || []).forEach(b => { m[b.id] = b; });
+  live.forEach(b => { m[b.id] = b; });
+  const byTime = (a, c) => a.date.localeCompare(c.date) || a.start - c.start;
+  const all = Object.values(m).filter(b => b && b.date);
+  const mine = all.filter(b => personRel(b, p) === 'same').sort(byTime);
+  const maybe = all.filter(b => personRel(b, p) === 'maybe').sort(byTime);
+  const t = today();
+  const steps = [1, 2, 3].map(r => {
+    const list = mine.filter(b => b.status === 'booked' && Number(b.round) === r);
+    const next = list.find(b => b.date >= t), last = list.filter(b => b.date < t).pop();
+    const pick = next || last, cls = !pick ? 'st-none' : next ? 'st-next' : 'st-done';
+    const txt = !pick ? '尚未預約' : (next ? (next.date === t ? '今天 ' : '已預約 ') : '已完成 ') + ppDate(pick.date).replace(/（.）$/, '') + (next ? ' ' + fmt(next.start) : '');
+    return `<li class="${cls}"><span class="pp-dot">${r}</span><span class="pp-sl">第${r}次</span><span class="pp-sd">${txt}</span>${list.length > 1 ? `<span class="pp-warn">有 ${list.length} 筆</span>` : ''}</li>`;
+  }).join('');
+  const note = p.loading ? '正在查詢更早的預約紀錄…'
+    : p.err ? `無法查詢兩個月前的紀錄（${esc(p.err)}），目前只列出最近兩個月起的預約`
+      : '依孩子姓名＋聯絡電話比對，包含已取消與較早的紀錄';
+  el.innerHTML = `<div class="pp-head"><div><p class="pp-k">受試者預約進度</p><h3 id="pp-title">${esc(p.name)}</h3><p class="hint">${esc(p.phone)}${p.email ? ' · ' + esc(p.email) : ''}</p></div>
+      <button type="button" class="icon pp-x" data-act="pp-close" aria-label="關閉">×</button></div>
+    <ol class="pp-steps" aria-label="評估進度">${steps}</ol>
+    <div class="pp-sec"><h4>所有預約（${mine.length} 筆）</h4>${mine.map(b => ppItem(b, p, false)).join('') || '<p class="hint">找不到這位受試者的預約</p>'}</div>
+    ${maybe.length ? `<div class="pp-sec"><h4>可能相關（只有姓名或電話相同）</h4><p class="pp-note">可能是兄弟姊妹，或預約時姓名、電話填寫不一致</p>${maybe.map(b => ppItem(b, p, true)).join('')}</div>` : ''}
+    <p class="pp-note">${note}</p>`;
+}
+
 /* ---------- 後台新增／修改預約 ---------- */
 function adminSlots(excludeId) {
   return (S.data.bookings || []).filter(b => b.status === 'booked' && b.id !== excludeId)
@@ -487,7 +565,7 @@ function startData() {
 }
 store.onAuth(user => {
   if (S.unsub) { S.unsub(); S.unsub = null; }
-  S.user = user; S.data = null; S.isAdmin = null; S.draft = null; S.editingId = null;
+  S.user = user; S.data = null; S.isAdmin = null; S.draft = null; S.editingId = null; S.person = null;
   render();
   if (!user) return;
   store.checkAdmin().then(ok => { S.isAdmin = ok; render(); if (ok) startData(); })
@@ -512,6 +590,21 @@ document.addEventListener('click', async e => {
     case 'ask': S.confirm = b.dataset.k; rerenderConfirm(); break;
     case 'confirm-no': S.confirm = null; rerenderConfirm(); break;
     case 'export': exportCSV(); break;
+    case 'person': openPerson(b.dataset.id); break;
+    case 'pp-close': closePerson(); break;
+    case 'pp-go': {
+      const d = b.dataset.d, id = b.dataset.id;
+      if (S.bkForm) readBkForm();
+      if (S.person) S.person.id = id;
+      S.bkDay = d; S.bkMonth = d.slice(0, 7); S.confirm = null;
+      // 有篩選研究人員時，這筆可能被藏起來，改回顯示全部人員
+      const bk = (S.data.bookings || []).find(x => x.id === id);
+      if (bk && S.filter !== 'all' && bk.staffId !== S.filter) S.filter = 'all';
+      renderBookings(); renderPerson();
+      const tr = document.querySelector(`#a-bookings tr[data-id="${CSS.escape(id)}"]`);
+      if (tr) tr.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      break;
+    }
     case 'bkm': {
       const [y, m] = S.bkMonth.split('-').map(Number), d = new Date(y, m - 1 + Number(b.dataset.n), 1);
       S.bkMonth = d.getFullYear() + '-' + U.pad(d.getMonth() + 1); S.confirm = null; renderBookings(); break;
@@ -604,6 +697,7 @@ document.addEventListener('click', async e => {
       renderStaffList(); renderEditor(); break;
   }
 });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.person) closePerson(); });
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.classList && t.classList.contains('day-on')) { readEditor(); const d = t.dataset.day; if (t.checked && !S.draft.weekly[d].length) S.draft.weekly[d] = [{ s: '09:00', e: '12:00' }]; renderEditor(); return; }

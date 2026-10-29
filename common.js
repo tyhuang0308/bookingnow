@@ -333,6 +333,16 @@ function firebaseStore(needAuth) {
     });
     return () => { dead = true; unsubs.forEach(f => f()); };
   };
+  /** 後台：找出和這位受試者姓名或電話相同的所有預約（包含兩個月前、後台月曆沒有載入的舊紀錄） */
+  S.personBookings = async function (name, phone) {
+    await ready;
+    const col = F.db.collection('bookings'), qs = [];
+    if (name) qs.push(col.where('name', '==', name).limit(60).get());
+    if (phone) qs.push(col.where('phone', '==', phone).limit(60).get());
+    const snaps = await Promise.all(qs), m = {};
+    snaps.forEach(s => docs(s).forEach(b => { m[b.id] = b; }));
+    return Object.values(m);
+  };
   S.saveStaff = async (id, data) => { await ready; await F.db.doc('staff/' + id).set(data); };
   S.deleteStaff = async id => { await ready; await F.db.doc('staff/' + id).delete(); };
   S.saveAdmins = async emails => { await ready; await F.db.doc('config/admins').set({ emails }); };
@@ -473,6 +483,7 @@ function demoStore() {
   S.signOut = () => { user = null; authSubs.forEach(f => f(null)); return later(); };
   S.checkAdmin = () => later(true);
   S.subscribeAdmin = cb => watch(() => cb(clone({ staff: db.staff, bookings: db.bookings, admins: db.admins, calendars: db.calendars || {}, calendarsUnavailable: false, rooms: rooms(), lineStaff: db.lineStaff || {}, got: { staff: true, bookings: true, admins: true, calendars: true, rooms: true } })));
+  S.personBookings = (name, phone) => later(db.bookings.filter(b => b.name === name || b.phone === phone));
   S.saveStaff = (id, data) => { const i = db.staff.findIndex(s => s.id === id); const o = Object.assign({ id }, clone(data)); if (i >= 0) db.staff[i] = o; else db.staff.push(o); save(); return later(); };
   S.deleteStaff = id => { db.staff = db.staff.filter(s => s.id !== id); save(); return later(); };
   S.saveAdmins = emails => { db.admins = emails.slice(); save(); return later(); };

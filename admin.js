@@ -377,22 +377,34 @@ function renderPerson() {
   const mine = all.filter(b => personRel(b, p) === 'same').sort(byTime);
   const maybe = all.filter(b => personRel(b, p) === 'maybe').sort(byTime);
   const t = today();
-  const steps = [1, 2, 3].map(r => {
+  // 每一次評估採用的那筆預約：有未來的預約就用最近的一筆，否則用最後一次已結束的
+  const picks = [1, 2, 3].map(r => {
     const list = mine.filter(b => b.status === 'booked' && Number(b.round) === r);
     const next = list.find(b => b.date >= t), last = list.filter(b => b.date < t).pop();
-    const pick = next || last, cls = !pick ? 'st-none' : next ? 'st-next' : 'st-done';
+    return { r, list, next, pick: next || last };
+  });
+  const dayDiff = (a, c) => Math.round((U.parseD(c).getTime() - U.parseD(a).getTime()) / 864e5);
+  const steps = picks.map(({ r, list, next, pick }, i) => {
+    const cls = !pick ? 'st-none' : next ? 'st-next' : 'st-done';
     const txt = !pick ? '尚未預約' : (next ? (next.date === t ? '今天 ' : '已預約 ') : '已完成 ') + ppDate(pick.date).replace(/（.）$/, '') + (next ? ' ' + fmt(next.start) : '');
-    return `<li class="${cls}"><span class="pp-dot">${r}</span><span class="pp-sl">第${r}次</span><span class="pp-sd">${txt}</span>${list.length > 1 ? `<span class="pp-warn">有 ${list.length} 筆</span>` : ''}</li>`;
+    // 和上一次評估相隔幾天（兩次都有預約時才顯示），標在兩個圓圈之間的線上
+    const prev = i ? picks[i - 1].pick : null;
+    let gap = '';
+    if (prev && pick) {
+      const n = dayDiff(prev.date, pick.date);
+      gap = n > 0 ? `<span class="pp-gap" title="第${r - 1}次到第${r}次相隔 ${n} 天"><i>相隔 ${n} 天</i></span>`
+        : `<span class="pp-gap bad" title="第${r}次排在第${r - 1}次之前或同一天"><i>${n === 0 ? '同一天' : '早於第' + (r - 1) + '次'}</i></span>`;
+    }
+    return `<li class="${cls}">${gap}<span class="pp-dot">${r}</span><span class="pp-sl">第${r}次</span><span class="pp-sd">${txt}</span>${list.length > 1 ? `<span class="pp-warn">有 ${list.length} 筆</span>` : ''}</li>`;
   }).join('');
   const note = p.loading ? '正在查詢更早的預約紀錄…'
-    : p.err ? `無法查詢兩個月前的紀錄（${esc(p.err)}），目前只列出最近兩個月起的預約`
-      : '依孩子姓名＋聯絡電話比對，包含兩個月前的紀錄；已取消的預約不列出';
-  el.innerHTML = `<div class="pp-in"><div class="pp-head"><div><p class="pp-k">受試者預約進度</p><h3 id="pp-title">${esc(p.name)}</h3><p class="hint">${esc(p.phone)}${p.email ? ' · ' + esc(p.email) : ''}</p></div>
+    : p.err ? `無法查詢兩個月前的紀錄（${esc(p.err)}），目前只列出最近兩個月起的預約` : '';
+  el.innerHTML = `<div class="pp-in"><div class="pp-body"><div class="pp-head"><div><p class="pp-k">受試者預約進度</p><h3 id="pp-title">${esc(p.name)}</h3><p class="hint">${esc(p.phone)}${p.email ? ' · ' + esc(p.email) : ''}</p></div>
       <button type="button" class="icon pp-x" data-act="pp-close" aria-label="關閉">×</button></div>
     <ol class="pp-steps" aria-label="評估進度">${steps}</ol>
-    <div class="pp-sec"><h4>所有預約（${mine.length} 筆）</h4>${mine.map(b => ppItem(b, p, false)).join('') || '<p class="hint">找不到這位受試者的預約</p>'}</div>
+    <div class="pp-sec">${mine.map(b => ppItem(b, p, false)).join('') || '<p class="hint">找不到這位受試者的預約</p>'}</div>
     ${maybe.length ? `<div class="pp-sec"><h4>可能相關（只有姓名或電話相同）</h4><p class="pp-note">可能是兄弟姊妹，或預約時姓名、電話填寫不一致</p>${maybe.map(b => ppItem(b, p, true)).join('')}</div>` : ''}
-    <p class="pp-note">${note}</p></div>`;
+    ${note ? `<p class="pp-note">${note}</p>` : ''}</div></div>`;
 }
 
 /* ---------- 後台新增／修改預約 ---------- */

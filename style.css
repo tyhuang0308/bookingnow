@@ -435,6 +435,8 @@ button.pp-item:hover:not(.is-cur){border-color:var(--line-strong);background:var
 .as-tag.warn{background:#FCEDEC;color:var(--danger)}
 .as-note{flex-basis:100%;font-size:.8125rem;color:var(--danger);text-align:right;white-space:normal}
 .bkc-more.as-miss{color:#8A6A1F}
+.bkc-more.as-sub{padding-left:12px;margin-top:-2px}
+.bkc-more.as-who{color:#2F4A37;padding-left:12px;margin-top:-2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 分頁上的待協助數量 */
 .tab-n{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:999px;background:#F6EEDC;color:#6B5320;font:500 .6875rem/1 var(--f-sans);vertical-align:1px}
 .tabs button[aria-selected="true"] .tab-n{background:#FFFFFF;color:var(--ink)}

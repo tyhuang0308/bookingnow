@@ -275,7 +275,7 @@ function renderBookings() {
     const cls = ['bkc-day', d === t ? 'is-today' : '', d < t ? 'is-past' : ''].join(' ');
     cal += `<button type="button" class="${cls}" data-act="bk-day" data-d="${d}" aria-pressed="${d === S.bkDay}" aria-label="${dLabel(d)}，${list.length} 筆預約">
       <span class="bkc-top"><span class="bkc-n">${i}</span>${list.length ? `<span class="bkc-count">${list.length}</span>` : ''}</span>
-      <span class="bkc-items">${list.slice(0, 3).map(b => `<span class="bkc-item"><span class="dot" style="background:${sColor(b.staffId)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}${b.round || ''}</span>`).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 筆</span>` : ''}${ex ? '<span class="bkc-more">已加開場地</span>' : ''}${(() => { const n = d >= t && S.data.assists ? list.filter(asOpen).length : 0; return n ? `<span class="bkc-more as-miss">暑研等待回覆 ${n}</span>` : ''; })()}</span>
+      <span class="bkc-items">${list.slice(0, 3).map(b => `<span class="bkc-item"><span class="dot" style="background:${sColor(b.staffId)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}${b.round || ''}</span>${(() => { const a = asOf(b); return a && a.need && a.helper ? `<span class="bkc-more as-who">${esc(asName(a))}負責</span>` : ''; })()}`).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 筆</span>` : ''}${ex ? '<span class="bkc-more">已加開場地</span>' : ''}${(() => { const n = d >= t && S.data.assists ? list.filter(asOpen).length : 0; return n ? `<span class="bkc-more as-miss">暑研等待回覆 ${n}</span>` : ''; })()}</span>
     </button>`;
   }
 
@@ -468,7 +468,7 @@ function renderSummer() {
     const cls = ['bkc-day', d === t ? 'is-today' : '', d < t ? 'is-past' : '', open ? 'sm-has-open' : ''].join(' ');
     cal += `<button type="button" class="${cls}" data-act="sm-day" data-d="${d}" aria-pressed="${d === S.smDay}" aria-label="${dLabel(d)}，${list.length} 場需要協助${open ? '，' + open + ' 場還沒有人接' : ''}">
       <span class="bkc-top"><span class="bkc-n">${i}</span>${list.length ? `<span class="bkc-count${open ? ' is-open' : ''}">${list.length}</span>` : ''}</span>
-      <span class="bkc-items">${list.slice(0, 3).map(b => { const st = staffOf(b.staffId); return `<span class="bkc-item${asOpen(b) && d >= t ? ' sm-open' : ''}"><span class="dot" style="background:${color(st && st.color)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)} · ${word(b)}</span>`; }).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 場</span>` : ''}</span>
+      <span class="bkc-items">${list.slice(0, 3).map(b => { const st = staffOf(b.staffId); return `<span class="bkc-item${asOpen(b) && d >= t ? ' sm-open' : ''}"><span class="dot" style="background:${color(st && st.color)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}</span><span class="bkc-more ${asOf(b).helper && !asChanged(asOf(b), b) ? 'as-who' : 'as-miss as-sub'}">${word(b)}</span>`; }).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 場</span>` : ''}</span>
     </button>`;
   }
 
@@ -499,11 +499,7 @@ function renderSummer() {
   detail += '</div>';
 
   const mine = up.filter(b => asMine(asOf(b))).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
-  const openN = up.filter(asOpen).length;
-  el.innerHTML = `<div class="bk-head"><p class="stat">還沒有人接 <b>${openN}</b> 場 · 你負責 <b>${mine.length}</b> 場</p></div>
-    <p class="hint" style="margin:-4px 0 12px">研究人員在「預約紀錄」按「暑研」的評估會出現在這裡。先按「我可以協助」的人接下這場，每場只需要一位；之後時間無法配合，可以按「時間無法配合」取消，讓其他人接下</p>
-    ${nameOf(S.user.email) ? '' : '<p class="warn" style="margin:-4px 0 12px">你還沒有設定名字，接下的評估會顯示你的Email。請到「研究人員帳號」設定名字</p>'}
-    ${mine.length ? `<div class="sm-mine"><span class="hint">你負責的評估：</span>${mine.map(b => `<button type="button" class="chip" data-act="sm-go" data-d="${b.date}">${shortDate(b.date)} ${fmt(b.start)} ${esc(b.name)}</button>`).join('')}</div>` : ''}
+  el.innerHTML = `<div class="sm-mine"><span class="hint">你負責的評估：</span>${mine.length ? mine.map(b => `<button type="button" class="chip" data-act="sm-go" data-d="${b.date}">${shortDate(b.date)} ${fmt(b.start)} ${esc(b.name)}</button>`).join('') : '<span class="hint">目前沒有</span>'}</div>
     <div class="monthbar">
       <button type="button" class="arrow" data-act="smm" data-n="-1" ${S.smMonth <= minM ? 'disabled' : ''} aria-label="上一個月">‹</button>
       <span class="mname">${y} 年 ${m} 月</span>

@@ -323,7 +323,7 @@ function firebaseStore(needAuth) {
       unsubs.push(F.db.collection('bookings').where('date', '>=', U.adminFrom()).onSnapshot(s => { st.bookings = docs(s); emit('bookings'); }, onErr));
       unsubs.push(F.db.collection('rooms').where('date', '>=', U.adminFrom()).onSnapshot(s => { st.rooms = roomsMap(s); emit('rooms'); },
         () => { st.rooms = {}; emit('rooms'); }));
-      unsubs.push(F.db.doc('config/admins').onSnapshot(s => { st.admins = (s.exists && s.data().emails) || []; st.adminNames = (s.exists && s.data().names) || {}; emit('admins'); }, onErr));
+      unsubs.push(F.db.doc('config/admins').onSnapshot(s => { st.admins = (s.exists && s.data().emails) || []; st.adminNames = (s.exists && s.data().names) || {}; st.adminRoles = (s.exists && s.data().roles) || {}; emit('admins'); }, onErr));
       // 研究人員的行事曆帳號（只有後台看得到）；安全規則還沒更新時不影響其他功能
       unsubs.push(F.db.doc('private/calendars').onSnapshot(
         s => { st.calendars = s.exists ? s.data() : {}; st.calendarsUnavailable = false; emit('calendars'); },
@@ -376,8 +376,8 @@ function firebaseStore(needAuth) {
   S.reconfirmAssist = async (id, forKey) => { await ready; await F.db.doc('assists/' + id).update({ helperFor: forKey, helperAt: F.FV.serverTimestamp() }); };
   S.saveStaff = async (id, data) => { await ready; await F.db.doc('staff/' + id).set(data); };
   S.deleteStaff = async id => { await ready; await F.db.doc('staff/' + id).delete(); };
-  /** 研究人員帳號名單；names = { email: 名字 }（暑研顯示「誰負責」用） */
-  S.saveAdmins = async (emails, names) => { await ready; await F.db.doc('config/admins').set({ emails, names: names || {} }); };
+  /** 研究人員帳號名單；names = { email: 名字 }（暑研顯示「誰負責」用）；roles = { email: 'summer' }（暑研學生，只能使用暑研分頁） */
+  S.saveAdmins = async (emails, names, roles) => { await ready; await F.db.doc('config/admins').set({ emails, names: names || {}, roles: roles || {} }); };
   /** 產生 LINE 綁定碼（研究人員把它傳給官方帳號即可綁定） */
   S.createLineBind = async staffId => {
     await ready;
@@ -429,8 +429,9 @@ function demoStore() {
     const d = {
       v: 9,
       rooms: {},
-      admins: ['teacher.chen@example.com', 'you@example.com'],
-      adminNames: { 'teacher.chen@example.com': '陳老師', 'you@example.com': '黃同學' },
+      admins: ['teacher.chen@example.com', 'you@example.com', 'junior.lin@example.com'],
+      adminNames: { 'teacher.chen@example.com': '陳老師', 'you@example.com': '黃同學', 'junior.lin@example.com': '林學弟' },
+      adminRoles: { 'junior.lin@example.com': 'summer' },
       calendars: { demolin: 'lin.researcher@gmail.com' },
       lineStaff: { demolin: ['U-demo'] },
       assists: {},
@@ -530,11 +531,13 @@ function demoStore() {
   S.reconfirmAssist = (id, forKey) => { Object.assign(dAssists()[id] || {}, { helperFor: forKey, helperAt: Date.now() }); save(); return later(); };
   S.signOut = () => { user = null; authSubs.forEach(f => f(null)); return later(); };
   S.checkAdmin = () => later(true);
-  S.subscribeAdmin = cb => watch(() => cb(clone({ staff: db.staff, bookings: db.bookings, admins: db.admins, adminNames: db.adminNames || {}, calendars: db.calendars || {}, calendarsUnavailable: false, rooms: rooms(), lineStaff: db.lineStaff || {}, assists: dAssists(), got: { staff: true, bookings: true, admins: true, calendars: true, rooms: true } })));
+  S.subscribeAdmin = cb => watch(() => cb(clone({ staff: db.staff, bookings: db.bookings, admins: db.admins, adminNames: db.adminNames || {}, adminRoles: db.adminRoles || {}, calendars: db.calendars || {}, calendarsUnavailable: false, rooms: rooms(), lineStaff: db.lineStaff || {}, assists: dAssists(), got: { staff: true, bookings: true, admins: true, calendars: true, rooms: true } })));
   S.personBookings = (name, phone) => later(db.bookings.filter(b => b.name === name || b.phone === phone));
   S.saveStaff = (id, data) => { const i = db.staff.findIndex(s => s.id === id); const o = Object.assign({ id }, clone(data)); if (i >= 0) db.staff[i] = o; else db.staff.push(o); save(); return later(); };
   S.deleteStaff = id => { db.staff = db.staff.filter(s => s.id !== id); save(); return later(); };
-  S.saveAdmins = (emails, names) => { db.admins = emails.slice(); db.adminNames = Object.assign({}, names); save(); return later(); };
+  S.saveAdmins = (emails, names, roles) => { db.admins = emails.slice(); db.adminNames = Object.assign({}, names); db.adminRoles = Object.assign({}, roles); save(); return later(); };
+  // 預覽模式：可以改用暑研學生的身分登入，看看學弟妹看到的畫面
+  S.signInAs = email => { user = { email }; authSubs.forEach(f => f(user)); return later(); };
   S.createLineBind = staffId => { const code = U.genCode().slice(0, 6); db.lineBind = Object.assign({}, db.lineBind, { [code]: { staffId } }); save(); return later(code); };
   S.unbindLine = staffId => { db.lineStaff = Object.assign({}, db.lineStaff); delete db.lineStaff[staffId]; save(); return later(); };
   S.saveCalendar = (staffId, email) => { db.calendars = db.calendars || {}; if (email) db.calendars[staffId] = email; else delete db.calendars[staffId]; save(); return later(); };

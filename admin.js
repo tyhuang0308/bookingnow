@@ -8,6 +8,8 @@ const S = {
   atab: 'staff', editingId: null, draft: null, confirm: null, filter: 'all', bkMonth: null, bkDay: null,
   bkForm: null, bkDone: null, lineCode: null, person: null, smMonth: null, smDay: null
 };
+/** 暑研學生：只能使用「暑研」分頁（在「研究人員帳號」設定身分） */
+const isSummer = () => !!(S.data && S.user && (S.data.adminRoles || {})[S.user.email] === 'summer');
 const aStaff = () => ((S.data && S.data.staff) || []).filter(s => s.name).sort((a, b) => num(a.order, 0) - num(b.order, 0));
 const GLOGO = '<svg class="gmark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
 
@@ -33,6 +35,7 @@ function render() {
       <h2>研究人員登入</h2>
       <p class="hint">使用你的Google帳號登入。只有被加入「研究人員帳號」名單的帳號可以進入後台</p>
       <div><button type="button" class="btn ghost" data-act="login">${GLOGO}使用 Google 帳號登入</button></div>
+      ${U.isDemo ? '<div><button type="button" class="linkbtn" data-act="login-summer">預覽：以暑研學生（林學弟）身分登入</button></div>' : ''}
       <p class="err" id="a-err" role="alert">${esc(S.loadErr)}</p></div>`;
     return;
   }
@@ -47,7 +50,9 @@ function render() {
   }
   if (!S.data) { root.innerHTML = S.loadErr ? `<div class="notice"><p>無法載入資料：${esc(S.loadErr)}</p></div>` : '<p class="hint">載入資料中…</p>'; return; }
   const tab = (v, label) => `<button type="button" role="tab" data-act="atab" data-v="${v}" aria-selected="${S.atab === v}">${label}</button>`;
-  root.innerHTML = `<div class="tabs" role="tablist">${tab('staff', '研究人員與時段')}${tab('bookings', '預約紀錄')}${tab('summer', summerBadge())}${tab('accounts', '研究人員帳號')}</div>
+  S.wasSummer = isSummer();
+  if (S.wasSummer) S.atab = 'summer'; // 暑研學生只看得到暑研分頁
+  root.innerHTML = `<div class="tabs" role="tablist">${S.wasSummer ? tab('summer', summerBadge()) : tab('staff', '研究人員與時段') + tab('bookings', '預約紀錄') + tab('summer', summerBadge()) + tab('accounts', '研究人員帳號')}</div>
     <div class="tabgap"></div>
     <div id="a-staff" class="admin-grid" ${S.atab === 'staff' ? '' : 'hidden'}><aside class="panel" id="a-list"></aside><section class="panel" id="a-editor"></section></div>
     <div class="bk-wrap" ${S.atab === 'bookings' ? '' : 'hidden'}><div id="a-bookings" class="panel"></div>
@@ -64,7 +69,7 @@ function render() {
 
 /* 資料更新時只重畫不會打斷編輯的部分 */
 function onData() {
-  if (!$('a-staff')) { render(); return; }
+  if (!$('a-staff') || S.wasSummer !== isSummer()) { render(); return; }
   renderTop();
   if (S.atab === 'staff') { renderStaffList(); if (!S.draft) renderEditor(); else if ($('line-st')) $('line-st').innerHTML = lineStatus(S.editingId); }
   if (S.atab === 'bookings') { if (S.bkForm) readBkForm(); renderBookings(); }
@@ -275,7 +280,8 @@ function renderBookings() {
     const cls = ['bkc-day', d === t ? 'is-today' : '', d < t ? 'is-past' : ''].join(' ');
     cal += `<button type="button" class="${cls}" data-act="bk-day" data-d="${d}" aria-pressed="${d === S.bkDay}" aria-label="${dLabel(d)}，${list.length} 筆預約">
       <span class="bkc-top"><span class="bkc-n">${i}</span>${list.length ? `<span class="bkc-count">${list.length}</span>` : ''}</span>
-      <span class="bkc-items">${list.slice(0, 3).map(b => `<span class="bkc-item"><span class="dot" style="background:${sColor(b.staffId)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}${b.round || ''}</span>${(() => { const a = asOf(b); return a && a.need && a.helper ? `<span class="bkc-more as-who">${esc(asName(a))}負責</span>` : ''; })()}`).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 筆</span>` : ''}${ex ? '<span class="bkc-more">已加開場地</span>' : ''}${(() => { const n = d >= t && S.data.assists ? list.filter(asOpen).length : 0; return n ? `<span class="bkc-more as-miss">暑研等待回覆 ${n}</span>` : ''; })()}</span>
+      <span class="bkc-items">${list.slice(0, 3).map(b => { const a = asOf(b), who = a && a.need && a.helper ? esc(asName(a)) + '負責' : '';
+        return `<span class="bkc-item${who ? ' has-who' : ''}"><span class="dot" style="background:${sColor(b.staffId)}"></span><span class="bkc-txt"><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}${b.round || ''}${who ? ` · <span class="as-who">${who}</span>` : ''}</span></span>`; }).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 筆</span>` : ''}${ex ? '<span class="bkc-more">已加開場地</span>' : ''}${(() => { const n = d >= t && S.data.assists ? list.filter(asOpen).length : 0; return n ? `<span class="bkc-more as-miss">暑研等待回覆 ${n}</span>` : ''; })()}</span>
     </button>`;
   }
 
@@ -468,7 +474,7 @@ function renderSummer() {
     const cls = ['bkc-day', d === t ? 'is-today' : '', d < t ? 'is-past' : '', open ? 'sm-has-open' : ''].join(' ');
     cal += `<button type="button" class="${cls}" data-act="sm-day" data-d="${d}" aria-pressed="${d === S.smDay}" aria-label="${dLabel(d)}，${list.length} 場需要協助${open ? '，' + open + ' 場還沒有人接' : ''}">
       <span class="bkc-top"><span class="bkc-n">${i}</span>${list.length ? `<span class="bkc-count${open ? ' is-open' : ''}">${list.length}</span>` : ''}</span>
-      <span class="bkc-items">${list.slice(0, 3).map(b => { const st = staffOf(b.staffId); return `<span class="bkc-item${asOpen(b) && d >= t ? ' sm-open' : ''}"><span class="dot" style="background:${color(st && st.color)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}</span><span class="bkc-more ${asOf(b).helper && !asChanged(asOf(b), b) ? 'as-who' : 'as-miss as-sub'}">${word(b)}</span>`; }).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 場</span>` : ''}</span>
+      <span class="bkc-items">${list.slice(0, 3).map(b => { const st = staffOf(b.staffId); return `<span class="bkc-item has-who${asOpen(b) && d >= t ? ' sm-open' : ''}"><span class="dot" style="background:${color(st && st.color)}"></span><span class="bkc-txt"><span class="mono">${fmt(b.start)}</span> ${esc(b.name)} · <span class="${asOf(b).helper && !asChanged(asOf(b), b) ? 'as-who' : ''}">${word(b)}</span></span></span>`; }).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 場</span>` : ''}</span>
     </button>`;
   }
 
@@ -631,36 +637,44 @@ function exportCSV() {
 /* ---------- 研究人員帳號 ---------- */
 function renderAccounts() {
   const el = $('a-accounts'); if (!el) return;
-  const me = S.user.email, names = S.data.adminNames || {};
+  const me = S.user.email, names = S.data.adminNames || {}, roles = S.data.adminRoles || {};
   // 網站擁有者（寫在安全規則裡）不一定在名單裡，也列出來讓他設定名字
   const list = Array.from(new Set((S.data.admins || []).concat([me]))).sort();
   el.innerHTML = `<div class="settings">
     <h2 class="panel-title">研究人員帳號</h2>
-    <p class="hint">加入研究人員的Google帳號，即可用其帳號登入這個後台。所有研究人員的權限都相同，可以修改全部的研究人員、時段與預約。參與暑研的學弟妹也加在這裡，登入後到「暑研」分頁回覆能不能協助。名字會顯示在暑研「誰負責」</p>
+    <p class="hint">加入Google帳號，即可用其帳號登入這個後台。名字會顯示在暑研的「誰負責」</p>
+    <ul class="role-help"><li><b>研究人員</b>：可以修改全部的研究人員、時段、預約與帳號</li><li><b>暑研學生</b>：登入後只看得到「暑研」分頁，只能回覆能不能協助評估，不能修改其他設定</li></ul>
     <div class="accts">${list.length ? list.map(em => {
       const k = 'acct:' + em, inList = (S.data.admins || []).includes(em);
       if (S.nameEdit === em) return `<form class="acct name-edit" id="name-form" data-v="${esc(em)}" novalidate>
           <input type="text" id="name-edit" maxlength="20" value="${esc(names[em] || '')}" placeholder="名字" aria-label="${esc(em)} 的名字">
           <span class="em">${esc(em)}</span>
           <button type="submit" class="btn primary small">儲存</button><button type="button" class="btn ghost small" data-act="name-cancel">取消</button></form>`;
-      return `<div class="acct"><span class="em"><b class="acct-nm${names[em] ? '' : ' none'}">${esc(names[em] || '尚未設定名字')}</b>${esc(em)}</span>${em === me ? '<span class="pill ok">你</span>' : ''}
+      const role = roles[em] === 'summer' ? 'summer' : 'admin';
+      const roleCtl = em === me || !inList ? `<span class="tag">${role === 'summer' ? '暑研學生' : '研究人員'}</span>`
+        : `<select class="role-sel" data-v="${esc(em)}" aria-label="${esc(em)} 的身分"><option value="admin" ${role === 'admin' ? 'selected' : ''}>研究人員</option><option value="summer" ${role === 'summer' ? 'selected' : ''}>暑研學生</option></select>`;
+      return `<div class="acct"><span class="em"><b class="acct-nm${names[em] ? '' : ' none'}">${esc(names[em] || '尚未設定名字')}</b>${esc(em)}</span>${em === me ? '<span class="pill ok">你</span>' : ''}${roleCtl}
         <button type="button" class="btn ghost small" data-act="name-edit" data-v="${esc(em)}">${names[em] ? '修改名字' : '設定名字'}</button>
         ${!inList ? '' : S.confirm === k
           ? `<span class="confirm">${em === me ? '移除後你就不能再進入後台。' : ''}確定移除？<button type="button" class="btn danger small" data-act="acct-del" data-v="${esc(em)}">移除</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
           : `<button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">移除</button>`}</div>`;
     }).join('') : '<p class="hint">還沒有加入其他研究人員</p>'}</div>
-    <form id="acct-form" class="addrow addrow3" novalidate>
+    <form id="acct-form" class="addrow addrow4" novalidate>
       <label class="field"><span>名字</span><input type="text" id="acct-name" maxlength="20" placeholder="王小美" autocomplete="off"></label>
-      <label class="field"><span>新增研究人員的Google帳號</span><input type="email" id="acct-new" placeholder="researcher@gmail.com" autocomplete="off"></label>
+      <label class="field"><span>Google帳號</span><input type="email" id="acct-new" placeholder="researcher@gmail.com" autocomplete="off"></label>
+      <label class="field"><span>身分</span><select id="acct-role"><option value="admin">研究人員</option><option value="summer">暑研學生</option></select></label>
       <button type="submit" class="btn primary" id="acct-add">加入</button>
     </form>
     <p class="err" id="acct-err" role="alert"></p>
   </div>`;
 }
-async function saveAdmins(list, okMsg, names) {
+async function saveAdmins(list, okMsg, names, roles) {
   const nm = Object.assign({}, (S.data && S.data.adminNames) || {}, names || {});
   Object.keys(nm).forEach(k => { if (!nm[k]) delete nm[k]; });
-  try { await store.saveAdmins(Array.from(new Set(list)).sort(), nm); U.toast(okMsg); S.confirm = null; S.nameEdit = null; }
+  // 身分只記「暑研學生」，其他都是研究人員
+  const rl = Object.assign({}, (S.data && S.data.adminRoles) || {}, roles || {});
+  Object.keys(rl).forEach(k => { if (rl[k] !== 'summer' || !list.includes(k)) delete rl[k]; });
+  try { await store.saveAdmins(Array.from(new Set(list)).sort(), nm, rl); U.toast(okMsg); S.confirm = null; S.nameEdit = null; }
   catch (e) { U.toast(U.errMsg(e)); }
 }
 
@@ -685,10 +699,10 @@ function startData() {
   S.unsub = store.subscribeAdmin(st => {
     if (!(st.got.staff && st.got.bookings && st.got.admins && st.got.calendars && st.got.rooms)) return;
     const first = !S.data;
-    S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [], adminNames: st.adminNames || {}, calendars: st.calendars || {}, calendarsUnavailable: !!st.calendarsUnavailable, rooms: st.rooms || {}, lineStaff: st.lineStaff || {},
+    S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [], adminNames: st.adminNames || {}, adminRoles: st.adminRoles || {}, calendars: st.calendars || {}, calendarsUnavailable: !!st.calendarsUnavailable, rooms: st.rooms || {}, lineStaff: st.lineStaff || {},
       assists: st.assistUnavailable ? null : (st.assists || {}), assistUnavailable: !!st.assistUnavailable };
     if (first) render(); else onData();
-    ensureLookups();
+    if (!isSummer()) ensureLookups();
   }, err => { S.loadErr = U.errMsg(err); if (!S.data) render(); else U.toast(S.loadErr); });
 }
 store.onAuth(user => {
@@ -715,7 +729,8 @@ document.addEventListener('click', async e => {
       try { await store.signIn(); } catch (err) { S.loadErr = U.errMsg(err); render(); }
       break;
     case 'logout': await store.signOut(); break;
-    case 'atab': if (S.atab === 'staff') readEditor(); if (S.bkForm) readBkForm(); S.atab = b.dataset.v; S.confirm = null; render(); break;
+    case 'login-summer': b.disabled = true; await store.signInAs('junior.lin@example.com'); break;
+    case 'atab': if (isSummer() && b.dataset.v !== 'summer') break; if (S.atab === 'staff') readEditor(); if (S.bkForm) readBkForm(); S.atab = b.dataset.v; S.confirm = null; render(); break;
     case 'ask': S.confirm = b.dataset.k; rerenderConfirm(); break;
     case 'confirm-no': S.confirm = null; rerenderConfirm(); break;
     case 'export': exportCSV(); break;
@@ -858,6 +873,11 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.classList && t.classList.contains('day-on')) { readEditor(); const d = t.dataset.day; if (t.checked && !S.draft.weekly[d].length) S.draft.weekly[d] = [{ s: '09:00', e: '12:00' }]; renderEditor(); return; }
   if (t.id === 'a-filter') { S.filter = t.value; renderBookings(); }
+  if (t.classList && t.classList.contains('role-sel')) {
+    const em = t.dataset.v, role = t.value;
+    t.disabled = true;
+    saveAdmins(S.data.admins || [], `已把 ${(S.data.adminNames || {})[em] || em} 改成${role === 'summer' ? '暑研學生' : '研究人員'}`, null, { [em]: role }).then(() => renderAccounts());
+  }
   if (t.id === 'bf-staff' || t.id === 'bf-date') { readBkForm(); S.bkForm.start = null; renderBookings(); }
   if (t.id === 'f-closed-all') { S.leaveAll = t.checked; $('f-closed-times').hidden = t.checked; }
 });
@@ -876,9 +896,9 @@ document.addEventListener('submit', async e => {
     const v = $('acct-new').value.trim().toLowerCase();
     if (!/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(v)) { $('acct-err').textContent = '請輸入完整的 Email，例如 researcher@gmail.com'; return; }
     if ((S.data.admins || []).includes(v)) { $('acct-err').textContent = '這個帳號已經在名單裡了。'; return; }
-    const nm = $('acct-name').value.trim();
+    const nm = $('acct-name').value.trim(), role = $('acct-role').value;
     $('acct-add').disabled = true;
-    await saveAdmins((S.data.admins || []).concat(v), '已加入 ' + (nm || v), nm ? { [v]: nm } : null);
+    await saveAdmins((S.data.admins || []).concat(v), `已加入${role === 'summer' ? '暑研學生' : '研究人員'} ` + (nm || v), nm ? { [v]: nm } : null, { [v]: role });
     renderAccounts();
   }
   if (id === 'name-form') {

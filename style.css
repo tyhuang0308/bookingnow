@@ -427,6 +427,34 @@ button.pp-item:hover:not(.is-cur){border-color:var(--line-strong);background:var
 .pill.up{background:var(--surface);box-shadow:inset 0 0 0 1px var(--ink);color:var(--ink)}
 .pp-note{font-size:.75rem;line-height:1.5;color:var(--muted)}
 
+/* ---------- 暑研：學弟妹協助評估 ---------- */
+.as-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin-top:6px}
+.as-tag{display:inline-flex;align-items:center;font-size:.75rem;line-height:1.5;border-radius:999px;padding:1px 10px;background:var(--subtle);color:var(--ink-2);white-space:nowrap}
+.as-tag.ok{background:#E9EFEA;color:#2F4A37}
+.as-tag.wait{background:#F6EEDC;color:#6B5320}
+.as-tag.warn{background:#FCEDEC;color:var(--danger)}
+.as-note{flex-basis:100%;font-size:.8125rem;color:var(--danger);text-align:right;white-space:normal}
+.bkc-more.as-miss{color:#8A6A1F}
+/* 分頁上的待協助數量 */
+.tab-n{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:999px;background:#F6EEDC;color:#6B5320;font:500 .6875rem/1 var(--f-sans);vertical-align:1px}
+.tabs button[aria-selected="true"] .tab-n{background:#FFFFFF;color:var(--ink)}
+/* 暑研月曆：還沒有人接的場次用暖色標出 */
+.bkc-day.sm-has-open:not([aria-pressed="true"]){border-color:#E6D3A8;background:#FFFBF2}
+.bkc-item.sm-open{color:#6B5320}
+.bkc-count.is-open{background:#E0B95A;color:#3D2E0C}
+.sm-mine{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:12px}
+.sm-mine .hint{font-size:.8125rem}
+/* 研究人員帳號：名字 */
+.acct .em{display:flex;flex-direction:column;gap:0}
+.acct-nm{font-family:var(--f-sans);font-weight:500;font-size:.9375rem}
+.acct-nm.none{color:var(--faint);font-weight:400;font-size:.8125rem}
+.name-edit input{width:160px;height:36px;padding:6px 10px}
+.name-edit .em{flex:1 1 180px}
+.addrow3{grid-template-columns:minmax(0,.6fr) minmax(0,1fr) auto}
+.addrow3 input{height:var(--ctl, 42px)}
+@media (max-width:560px){ .addrow3{grid-template-columns:minmax(0,1fr)} .name-edit input{width:100%} }
+@media (max-width:560px){ .as-note{text-align:left} }
+
 /* ---------- 手機（特別是 iPhone Safari）版面修正 ---------- */
 /* 日期、時間欄位：取消瀏覽器原生外觀，高度、對齊與其他輸入框一致，也不會撐出畫面 */
 input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;display:block;height:42px;min-width:0;max-width:100%;line-height:1.2;text-align:left;background-color:var(--surface)}

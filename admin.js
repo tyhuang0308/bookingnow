@@ -6,7 +6,7 @@ const store = U.createStore(true);
 const S = {
   user: undefined, isAdmin: null, data: null, unsub: null, loadErr: '',
   atab: 'staff', editingId: null, draft: null, confirm: null, filter: 'all', bkMonth: null, bkDay: null,
-  bkForm: null, bkDone: null, lineCode: null, person: null
+  bkForm: null, bkDone: null, lineCode: null, person: null, smMonth: null, smDay: null
 };
 const aStaff = () => ((S.data && S.data.staff) || []).filter(s => s.name).sort((a, b) => num(a.order, 0) - num(b.order, 0));
 const GLOGO = '<svg class="gmark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
@@ -47,15 +47,17 @@ function render() {
   }
   if (!S.data) { root.innerHTML = S.loadErr ? `<div class="notice"><p>無法載入資料：${esc(S.loadErr)}</p></div>` : '<p class="hint">載入資料中…</p>'; return; }
   const tab = (v, label) => `<button type="button" role="tab" data-act="atab" data-v="${v}" aria-selected="${S.atab === v}">${label}</button>`;
-  root.innerHTML = `<div class="tabs" role="tablist">${tab('staff', '研究人員與時段')}${tab('bookings', '預約紀錄')}${tab('accounts', '研究人員帳號')}</div>
+  root.innerHTML = `<div class="tabs" role="tablist">${tab('staff', '研究人員與時段')}${tab('bookings', '預約紀錄')}${tab('summer', summerBadge())}${tab('accounts', '研究人員帳號')}</div>
     <div class="tabgap"></div>
     <div id="a-staff" class="admin-grid" ${S.atab === 'staff' ? '' : 'hidden'}><aside class="panel" id="a-list"></aside><section class="panel" id="a-editor"></section></div>
     <div class="bk-wrap" ${S.atab === 'bookings' ? '' : 'hidden'}><div id="a-bookings" class="panel"></div>
       <!-- 受試者預約進度：點選預約紀錄的某一筆時，在旁邊顯示同一位受試者的所有預約 -->
       <aside id="pp" class="pp" role="dialog" aria-labelledby="pp-title" hidden></aside></div>
+    <div id="a-summer" class="panel" ${S.atab === 'summer' ? '' : 'hidden'}></div>
     <div id="a-accounts" class="panel" ${S.atab === 'accounts' ? '' : 'hidden'}></div>`;
   if (S.atab === 'staff') { renderStaffList(); renderEditor(); }
   if (S.atab === 'bookings') renderBookings();
+  if (S.atab === 'summer') renderSummer();
   if (S.atab === 'accounts') renderAccounts();
   renderPerson();
 }
@@ -66,7 +68,9 @@ function onData() {
   renderTop();
   if (S.atab === 'staff') { renderStaffList(); if (!S.draft) renderEditor(); else if ($('line-st')) $('line-st').innerHTML = lineStatus(S.editingId); }
   if (S.atab === 'bookings') { if (S.bkForm) readBkForm(); renderBookings(); }
-  if (S.atab === 'accounts') renderAccounts();
+  if (S.atab === 'summer') renderSummer();
+  if (S.atab === 'accounts' && !S.nameEdit) renderAccounts(); // 正在輸入名字時不重畫，以免打到一半的字不見
+  updateSummerTab();
   renderPerson();
 }
 
@@ -271,7 +275,7 @@ function renderBookings() {
     const cls = ['bkc-day', d === t ? 'is-today' : '', d < t ? 'is-past' : ''].join(' ');
     cal += `<button type="button" class="${cls}" data-act="bk-day" data-d="${d}" aria-pressed="${d === S.bkDay}" aria-label="${dLabel(d)}，${list.length} 筆預約">
       <span class="bkc-top"><span class="bkc-n">${i}</span>${list.length ? `<span class="bkc-count">${list.length}</span>` : ''}</span>
-      <span class="bkc-items">${list.slice(0, 3).map(b => `<span class="bkc-item"><span class="dot" style="background:${sColor(b.staffId)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}${b.round || ''}</span>`).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 筆</span>` : ''}${ex ? '<span class="bkc-more">已加開場地</span>' : ''}</span>
+      <span class="bkc-items">${list.slice(0, 3).map(b => `<span class="bkc-item"><span class="dot" style="background:${sColor(b.staffId)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}${b.round || ''}</span>`).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 筆</span>` : ''}${ex ? '<span class="bkc-more">已加開場地</span>' : ''}${(() => { const n = d >= t && S.data.assists ? list.filter(asOpen).length : 0; return n ? `<span class="bkc-more as-miss">暑研等待回覆 ${n}</span>` : ''; })()}</span>
     </button>`;
   }
 
@@ -295,10 +299,12 @@ function renderBookings() {
       const sel = S.person && S.person.id === b.id ? ' class="is-sel"' : '';
       detail += `<tr data-act="person" data-id="${esc(b.id)}"${sel}><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
         <td><button type="button" class="pname" data-act="person" data-id="${esc(b.id)}" title="查看這位受試者的所有預約">${esc(b.name)}</button>${b.round ? `<span class="tag">第${b.round}次</span>` : ''}${b.createdBy ? '<span class="tag">後台代約</span>' : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
-        <td><div class="nt mono">${esc(b.code || '')}</div>${sync}</td>
+        <td><div class="nt mono">${esc(b.code || '')}</div>${sync}${asTag(b) ? `<div class="as-row">${asTag(b)}</div>` : ''}</td>
         <td class="ac">${S.confirm === k
           ? `<span class="confirm">取消這筆？<button type="button" class="btn danger small" data-act="bk-cancel" data-id="${esc(b.id)}">確定取消</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
-          : `<span class="acts">${reopenBtn}${past ? '' : `<button type="button" class="btn ghost small" data-act="bf-edit" data-id="${esc(b.id)}">修改</button><button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">取消預約</button>`}</span>`}</td></tr>`;
+          : `<span class="acts">${past || S.data.assistUnavailable ? '' : (asOf(b) && asOf(b).need
+              ? `<button type="button" class="btn ghost small" data-act="as-off" data-id="${esc(b.id)}">取消暑研</button>`
+              : `<button type="button" class="btn ghost small" data-act="as-need" data-id="${esc(b.id)}">暑研</button>`)}${reopenBtn}${past ? '' : `<button type="button" class="btn ghost small" data-act="bf-edit" data-id="${esc(b.id)}">修改</button><button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">取消預約</button>`}</span>`}</td></tr>`;
     }
     detail += '</tbody></table></div>';
     if (!S.person) detail += '<p class="hint" style="padding-top:10px">點選任一筆預約，可以在旁邊查看這位受試者其他次的預約日期與時段</p>';
@@ -353,7 +359,8 @@ function ppState(b) {
 }
 function ppItem(b, p, showWho) {
   const st = aStaff().find(s => s.id === b.staffId), stt = ppState(b);
-  const meta = [esc(st ? st.name : b.staffName), b.round ? `第${esc(b.round)}次` : '', showWho ? esc(b.name) + ' · ' + esc(b.phone) : ''].filter(Boolean).join(' · ');
+  const as = asOf(b), asTxt = as && as.need && b.status === 'booked' ? (as.helper ? esc(asName(as)) + '負責' : '暑研等待回覆') : '';
+  const meta = [esc(st ? st.name : b.staffName), b.round ? `第${esc(b.round)}次` : '', asTxt, showWho ? esc(b.name) + ' · ' + esc(b.phone) : ''].filter(Boolean).join(' · ');
   const inner = `<span class="dot" style="background:${color(st && st.color)}"></span><span class="pp-when">${ppDate(b.date)} ${fmt(b.start)}–${fmt(b.end)}</span><span class="pill ${stt.cls}">${stt.txt}</span><span class="pp-meta">${meta}</span>`;
   const cls = `pp-item${b.id === p.id ? ' is-cur' : ''}${b.status !== 'booked' ? ' is-off' : ''}`;
   // 月曆有載入的日期才能點過去（後台只載入兩個月前起的紀錄）
@@ -405,6 +412,105 @@ function renderPerson() {
     <div class="pp-sec">${mine.map(b => ppItem(b, p, false)).join('') || '<p class="hint">找不到這位受試者的預約</p>'}</div>
     ${maybe.length ? `<div class="pp-sec"><h4>可能相關（只有姓名或電話相同）</h4><p class="pp-note">可能是兄弟姊妹，或預約時姓名、電話填寫不一致</p>${maybe.map(b => ppItem(b, p, true)).join('')}</div>` : ''}
     ${note ? `<p class="pp-note">${note}</p>` : ''}</div></div>`;
+}
+
+/* ---------- 暑研：學弟妹協助評估 ----------
+   研究人員在「預約紀錄」按「暑研」→ 學弟妹在「暑研」分頁按「我可以協助」，先按的人接下（每場一位）；
+   之後時間無法配合，可以自己放掉，讓其他人再接。 */
+const asKey = b => [b.staffId, b.date, b.start, b.end].join('|');
+const asOf = b => (S.data.assists || {})[b.id] || null;
+/** 協助者的名字：在「研究人員帳號」設定的名字；沒有設定時顯示Email的前半段 */
+const nameOf = em => ((S.data && S.data.adminNames) || {})[em] || '';
+const asName = a => nameOf(a.helper) || a.helperName || String(a.helper || '').split('@')[0];
+const asMine = a => !!(a && a.helper && a.helper === S.user.email);
+/** 接下之後，研究人員或家長改了這筆預約的時間／研究人員 → 要請協助的人重新確認 */
+const asChanged = (a, b) => !!(a && a.helper && a.helperFor && a.helperFor !== asKey(b));
+function asWas(a) {
+  const [, d, s, e] = String(a.helperFor || '').split('|');
+  return d ? `${dLabel(d)} ${fmt(Number(s))}–${fmt(Number(e))}` : '';
+}
+/** 狀態標籤（預約紀錄與暑研共用） */
+function asTag(b) {
+  const a = asOf(b); if (!a || !a.need) return '';
+  if (!a.helper) return '<span class="as-tag wait">等待回覆</span>';
+  return `<span class="as-tag ok">${esc(asName(a))}負責</span>${asChanged(a, b) ? '<span class="as-tag warn">時間已改，待重新確認</span>' : ''}`;
+}
+/** 需要協助、還沒有人接（或時間改過待重新確認）的預約 */
+const asOpen = b => { const a = asOf(b); return !!(a && a.need && (!a.helper || asChanged(a, b))); };
+function asNeeded() { return (S.data.bookings || []).filter(b => b.status === 'booked' && asOf(b) && asOf(b).need); }
+function summerBadge() {
+  const t = today(), n = S.data && !S.data.assistUnavailable ? asNeeded().filter(b => b.date >= t && asOpen(b)).length : 0;
+  return '暑研' + (n ? `<span class="tab-n">${n}</span>` : '');
+}
+function updateSummerTab() { const el = document.querySelector('.tabs [data-v="summer"]'); if (el) el.innerHTML = summerBadge(); }
+
+function renderSummer() {
+  const el = $('a-summer'); if (!el) return;
+  if (S.data.assistUnavailable) { el.innerHTML = '<div class="empty"><h2>暑研</h2><p>要使用暑研功能，請先依說明更新 Firebase 的資料庫安全規則</p></div>'; return; }
+  const t = today(), all = asNeeded(), up = all.filter(b => b.date >= t);
+  const minM = U.adminFrom().slice(0, 7);
+  if (!S.smDay) {
+    // 第一次打開：跳到最近一場還沒有人接的評估
+    const first = up.filter(asOpen).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start)[0];
+    S.smDay = first ? first.date : t;
+  }
+  if (!S.smMonth) S.smMonth = S.smDay.slice(0, 7);
+  if (S.smMonth < minM) S.smMonth = minM;
+  const [y, m] = S.smMonth.split('-').map(Number);
+  const daysIn = new Date(y, m, 0).getDate(), lead = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+  const staffOf = id => aStaff().find(s => s.id === id);
+  const on = d => all.filter(b => b.date === d).sort((a, b) => a.start - b.start);
+  const word = b => { const a = asOf(b); return !a.helper ? '等待回覆' : asChanged(a, b) ? '待確認' : esc(asName(a)) + '負責'; };
+
+  let cal = ORDER.map(d => `<div class="bkc-wh">${WD[d]}</div>`).join('') + '<div class="bkc-out"></div>'.repeat(lead);
+  for (let i = 1; i <= daysIn; i++) {
+    const d = S.smMonth + '-' + U.pad(i), list = on(d), open = d >= t ? list.filter(asOpen).length : 0;
+    const cls = ['bkc-day', d === t ? 'is-today' : '', d < t ? 'is-past' : '', open ? 'sm-has-open' : ''].join(' ');
+    cal += `<button type="button" class="${cls}" data-act="sm-day" data-d="${d}" aria-pressed="${d === S.smDay}" aria-label="${dLabel(d)}，${list.length} 場需要協助${open ? '，' + open + ' 場還沒有人接' : ''}">
+      <span class="bkc-top"><span class="bkc-n">${i}</span>${list.length ? `<span class="bkc-count${open ? ' is-open' : ''}">${list.length}</span>` : ''}</span>
+      <span class="bkc-items">${list.slice(0, 3).map(b => { const st = staffOf(b.staffId); return `<span class="bkc-item${asOpen(b) && d >= t ? ' sm-open' : ''}"><span class="dot" style="background:${color(st && st.color)}"></span><span class="mono">${fmt(b.start)}</span> ${esc(b.name)} · ${word(b)}</span>`; }).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 場</span>` : ''}</span>
+    </button>`;
+  }
+
+  // 選取日期的明細
+  const day = S.smDay, list = on(day), past = day < t;
+  let detail = `<div class="bk-day"><div class="day-actions"><h3>${dLabel(day)}${day === t ? ' · 今天' : ''}</h3></div>`;
+  if (!list.length) detail += '<p class="hint" style="padding-top:10px">這一天沒有需要協助的評估</p>';
+  else {
+    detail += '<div class="tw"><table><tbody>';
+    for (const b of list) {
+      const st = staffOf(b.staffId), a = asOf(b), id = esc(b.id), k = 'rel:' + b.id;
+      let acts = '';
+      if (!past) {
+        if (!a.helper) acts = `<button type="button" class="btn primary small" data-act="as-claim" data-id="${id}">我可以協助</button>`;
+        else if (asMine(a) && asChanged(a, b)) acts = `<span class="as-note">時間已變更（原本 ${esc(asWas(a))}），請確認是否仍可協助</span>
+            <button type="button" class="btn primary small" data-act="as-reconfirm" data-id="${id}">仍可協助</button><button type="button" class="btn ghost small" data-act="as-release" data-id="${id}">無法協助</button>`;
+        else if (asMine(a)) acts = S.confirm === k
+          ? `<span class="confirm">取消這筆？<button type="button" class="btn danger small" data-act="as-release" data-id="${id}">確定取消</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
+          : `<button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">時間無法配合</button>`;
+      }
+      detail += `<tr><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
+        <td><b>${esc(b.name)}</b>${b.round ? `<span class="tag">第${b.round}次</span>` : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
+        <td><div class="as-row">${asTag(b)}</div></td>
+        <td class="ac"><span class="acts">${acts}</span></td></tr>`;
+    }
+    detail += '</tbody></table></div>';
+  }
+  detail += '</div>';
+
+  const mine = up.filter(b => asMine(asOf(b))).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+  const openN = up.filter(asOpen).length;
+  el.innerHTML = `<div class="bk-head"><p class="stat">還沒有人接 <b>${openN}</b> 場 · 你負責 <b>${mine.length}</b> 場</p></div>
+    <p class="hint" style="margin:-4px 0 12px">研究人員在「預約紀錄」按「暑研」的評估會出現在這裡。先按「我可以協助」的人接下這場，每場只需要一位；之後時間無法配合，可以按「時間無法配合」取消，讓其他人接下</p>
+    ${nameOf(S.user.email) ? '' : '<p class="warn" style="margin:-4px 0 12px">你還沒有設定名字，接下的評估會顯示你的Email。請到「研究人員帳號」設定名字</p>'}
+    ${mine.length ? `<div class="sm-mine"><span class="hint">你負責的評估：</span>${mine.map(b => `<button type="button" class="chip" data-act="sm-go" data-d="${b.date}">${shortDate(b.date)} ${fmt(b.start)} ${esc(b.name)}</button>`).join('')}</div>` : ''}
+    <div class="monthbar">
+      <button type="button" class="arrow" data-act="smm" data-n="-1" ${S.smMonth <= minM ? 'disabled' : ''} aria-label="上一個月">‹</button>
+      <span class="mname">${y} 年 ${m} 月</span>
+      <button type="button" class="arrow" data-act="smm" data-n="1" aria-label="下一個月">›</button>
+    </div>
+    <div class="bkc">${cal}</div>
+    ${detail}`;
 }
 
 /* ---------- 後台新增／修改預約 ---------- */
@@ -516,8 +622,8 @@ async function saveBkForm() {
 function exportCSV() {
   const list = (S.data.bookings || []).slice().sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const head = ['日期', '開始', '結束', '研究人員', '孩子姓名', '第幾次評估', '電話', 'Email', '備註', '狀態', '預約代碼', '建立方式'];
-  const lines = [head.map(q).join(',')].concat(list.map(b => [b.date, fmt(b.start), fmt(b.end), b.staffName, b.name, b.round || '', b.phone, b.email, b.note, b.status === 'booked' ? '已預約' : '已取消', b.code, b.createdBy ? '後台代約' : '家長預約'].map(q).join(',')));
+  const head = ['日期', '開始', '結束', '研究人員', '孩子姓名', '第幾次評估', '電話', 'Email', '備註', '狀態', '預約代碼', '建立方式', '暑研', '負責的學弟妹'];
+  const lines = [head.map(q).join(',')].concat(list.map(b => { const a = asOf(b) || {}; return [b.date, fmt(b.start), fmt(b.end), b.staffName, b.name, b.round || '', b.phone, b.email, b.note, b.status === 'booked' ? '已預約' : '已取消', b.code, b.createdBy ? '後台代約' : '家長預約', a.need ? '是' : '', a.need && a.helper ? asName(a) : ''].map(q).join(','); }));
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = '預約紀錄-' + today() + '.csv';
@@ -529,26 +635,36 @@ function exportCSV() {
 /* ---------- 研究人員帳號 ---------- */
 function renderAccounts() {
   const el = $('a-accounts'); if (!el) return;
-  const list = (S.data.admins || []).slice().sort(), me = S.user.email;
+  const me = S.user.email, names = S.data.adminNames || {};
+  // 網站擁有者（寫在安全規則裡）不一定在名單裡，也列出來讓他設定名字
+  const list = Array.from(new Set((S.data.admins || []).concat([me]))).sort();
   el.innerHTML = `<div class="settings">
     <h2 class="panel-title">研究人員帳號</h2>
-    <p class="hint">加入研究人員的Google帳號，即可用其帳號登入這個後台。所有研究人員的權限都相同，可以修改全部的研究人員、時段與預約</p>
+    <p class="hint">加入研究人員的Google帳號，即可用其帳號登入這個後台。所有研究人員的權限都相同，可以修改全部的研究人員、時段與預約。參與暑研的學弟妹也加在這裡，登入後到「暑研」分頁回覆能不能協助。名字會顯示在暑研「誰負責」</p>
     <div class="accts">${list.length ? list.map(em => {
-      const k = 'acct:' + em;
-      return `<div class="acct"><span class="em">${esc(em)}</span>${em === me ? '<span class="pill ok">你</span>' : ''}
-        ${S.confirm === k
+      const k = 'acct:' + em, inList = (S.data.admins || []).includes(em);
+      if (S.nameEdit === em) return `<form class="acct name-edit" id="name-form" data-v="${esc(em)}" novalidate>
+          <input type="text" id="name-edit" maxlength="20" value="${esc(names[em] || '')}" placeholder="名字" aria-label="${esc(em)} 的名字">
+          <span class="em">${esc(em)}</span>
+          <button type="submit" class="btn primary small">儲存</button><button type="button" class="btn ghost small" data-act="name-cancel">取消</button></form>`;
+      return `<div class="acct"><span class="em"><b class="acct-nm${names[em] ? '' : ' none'}">${esc(names[em] || '尚未設定名字')}</b>${esc(em)}</span>${em === me ? '<span class="pill ok">你</span>' : ''}
+        <button type="button" class="btn ghost small" data-act="name-edit" data-v="${esc(em)}">${names[em] ? '修改名字' : '設定名字'}</button>
+        ${!inList ? '' : S.confirm === k
           ? `<span class="confirm">${em === me ? '移除後你就不能再進入後台。' : ''}確定移除？<button type="button" class="btn danger small" data-act="acct-del" data-v="${esc(em)}">移除</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
           : `<button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">移除</button>`}</div>`;
     }).join('') : '<p class="hint">還沒有加入其他研究人員</p>'}</div>
-    <form id="acct-form" class="addrow" novalidate>
+    <form id="acct-form" class="addrow addrow3" novalidate>
+      <label class="field"><span>名字</span><input type="text" id="acct-name" maxlength="20" placeholder="王小美" autocomplete="off"></label>
       <label class="field"><span>新增研究人員的Google帳號</span><input type="email" id="acct-new" placeholder="researcher@gmail.com" autocomplete="off"></label>
       <button type="submit" class="btn primary" id="acct-add">加入</button>
     </form>
     <p class="err" id="acct-err" role="alert"></p>
   </div>`;
 }
-async function saveAdmins(list, okMsg) {
-  try { await store.saveAdmins(Array.from(new Set(list)).sort()); U.toast(okMsg); S.confirm = null; }
+async function saveAdmins(list, okMsg, names) {
+  const nm = Object.assign({}, (S.data && S.data.adminNames) || {}, names || {});
+  Object.keys(nm).forEach(k => { if (!nm[k]) delete nm[k]; });
+  try { await store.saveAdmins(Array.from(new Set(list)).sort(), nm); U.toast(okMsg); S.confirm = null; S.nameEdit = null; }
   catch (e) { U.toast(U.errMsg(e)); }
 }
 
@@ -573,7 +689,8 @@ function startData() {
   S.unsub = store.subscribeAdmin(st => {
     if (!(st.got.staff && st.got.bookings && st.got.admins && st.got.calendars && st.got.rooms)) return;
     const first = !S.data;
-    S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [], calendars: st.calendars || {}, calendarsUnavailable: !!st.calendarsUnavailable, rooms: st.rooms || {}, lineStaff: st.lineStaff || {} };
+    S.data = { staff: st.staff || [], bookings: st.bookings || [], admins: st.admins || [], adminNames: st.adminNames || {}, calendars: st.calendars || {}, calendarsUnavailable: !!st.calendarsUnavailable, rooms: st.rooms || {}, lineStaff: st.lineStaff || {},
+      assists: st.assistUnavailable ? null : (st.assists || {}), assistUnavailable: !!st.assistUnavailable };
     if (first) render(); else onData();
     ensureLookups();
   }, err => { S.loadErr = U.errMsg(err); if (!S.data) render(); else U.toast(S.loadErr); });
@@ -591,6 +708,7 @@ store.onAuth(user => {
 function rerenderConfirm() {
   if (S.atab === 'staff') { readEditor(); renderEditor(); }
   else if (S.atab === 'bookings') renderBookings();
+  else if (S.atab === 'summer') renderSummer();
   else if (S.atab === 'accounts') renderAccounts();
 }
 document.addEventListener('click', async e => {
@@ -605,6 +723,31 @@ document.addEventListener('click', async e => {
     case 'ask': S.confirm = b.dataset.k; rerenderConfirm(); break;
     case 'confirm-no': S.confirm = null; rerenderConfirm(); break;
     case 'export': exportCSV(); break;
+    case 'as-need': case 'as-off': {
+      const bk = (S.data.bookings || []).find(x => x.id === b.dataset.id); if (!bk) break;
+      const on = b.dataset.act === 'as-need';
+      b.disabled = true;
+      try { await store.setAssistNeed(bk, on, S.user.email); U.toast(on ? '已加入暑研，學弟妹可以在「暑研」分頁回覆' : '已取消暑研'); }
+      catch (err) { U.toast(U.errMsg(err)); b.disabled = false; }
+      break;
+    }
+    case 'as-claim': case 'as-release': case 'as-reconfirm': {
+      const bk = (S.data.bookings || []).find(x => x.id === b.dataset.id); if (!bk) break;
+      b.disabled = true;
+      try {
+        if (b.dataset.act === 'as-claim') { await store.claimAssist(bk.id, asKey(bk), { email: S.user.email, name: nameOf(S.user.email) }); U.toast(`已接下 ${dLabel(bk.date)} ${fmt(bk.start)} 的評估`); }
+        else if (b.dataset.act === 'as-reconfirm') { await store.reconfirmAssist(bk.id, asKey(bk)); U.toast('已確認仍可協助'); }
+        else { await store.releaseAssist(bk.id); U.toast('已取消，這場會回到「等待回覆」讓其他學弟妹接下'); }
+        S.confirm = null;
+      } catch (err) { U.toast(U.errMsg(err)); }
+      renderSummer(); updateSummerTab(); break;
+    }
+    case 'smm': {
+      const [y, m] = S.smMonth.split('-').map(Number), d = new Date(y, m - 1 + Number(b.dataset.n), 1);
+      S.smMonth = d.getFullYear() + '-' + U.pad(d.getMonth() + 1); S.confirm = null; renderSummer(); break;
+    }
+    case 'sm-day': S.smDay = b.dataset.d; S.confirm = null; renderSummer(); break;
+    case 'sm-go': S.smDay = b.dataset.d; S.smMonth = b.dataset.d.slice(0, 7); S.confirm = null; renderSummer(); break;
     case 'person': openPerson(b.dataset.id); break;
     case 'pp-close': closePerson(); break;
     case 'pp-go': {
@@ -672,7 +815,9 @@ document.addEventListener('click', async e => {
       catch (err) { U.toast(U.errMsg(err)); }
       renderBookings(); break;
     }
-    case 'acct-del': b.disabled = true; await saveAdmins((S.data.admins || []).filter(x => x !== b.dataset.v), '已移除 ' + b.dataset.v); renderAccounts(); break;
+    case 'acct-del': b.disabled = true; await saveAdmins((S.data.admins || []).filter(x => x !== b.dataset.v), '已移除 ' + b.dataset.v, { [b.dataset.v]: '' }); renderAccounts(); break;
+    case 'name-edit': S.nameEdit = b.dataset.v; S.confirm = null; renderAccounts(); if ($('name-edit')) $('name-edit').focus(); break;
+    case 'name-cancel': S.nameEdit = null; renderAccounts(); break;
     case 'ed-new': S.editingId = null; S.draft = blankDraft(); S.confirm = null; renderStaffList(); renderEditor(); $('f-name').focus(); break;
     case 'ed-open': {
       const s = aStaff().find(x => x.id === b.dataset.id); if (!s) break;
@@ -735,8 +880,14 @@ document.addEventListener('submit', async e => {
     const v = $('acct-new').value.trim().toLowerCase();
     if (!/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(v)) { $('acct-err').textContent = '請輸入完整的 Email，例如 researcher@gmail.com'; return; }
     if ((S.data.admins || []).includes(v)) { $('acct-err').textContent = '這個帳號已經在名單裡了。'; return; }
+    const nm = $('acct-name').value.trim();
     $('acct-add').disabled = true;
-    await saveAdmins((S.data.admins || []).concat(v), '已加入 ' + v);
+    await saveAdmins((S.data.admins || []).concat(v), '已加入 ' + (nm || v), nm ? { [v]: nm } : null);
+    renderAccounts();
+  }
+  if (id === 'name-form') {
+    const em = e.target.dataset.v, nm = $('name-edit').value.trim();
+    await saveAdmins(S.data.admins || [], nm ? '已設定名字：' + nm : '已清除名字', { [em]: nm });
     renderAccounts();
   }
 });

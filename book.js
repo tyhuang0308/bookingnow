@@ -17,7 +17,6 @@ const pubSlots = () => S.moving ? S.pub.slots.filter(x => x.bookingId !== S.movi
 const avail = (st, date, dur) => U.available(st, date, pubSlots(), S.pub.rooms, dur || (S.moving ? S.moving.end - S.moving.start : 0));
 /** 這個時段排得下第幾次評估 */
 const roundsAt = (st, date, start) => U.roundsAt(st, date, start, pubSlots(), S.pub.rooms);
-const roundsText = list => '第' + list.join('、') + '次';
 
 /* 這台裝置預約過的代碼 */
 function loadDevice() { try { S.device = (JSON.parse(localStorage.getItem('booking-mine') || '[]') || []).filter(b => b && b.code && b.date >= today()); } catch (e) { S.device = []; } }
@@ -85,12 +84,8 @@ function renderTimes() {
     if (!S.busy) { renderForm(); U.toast('你選的時段剛被別人預約了，請重新選擇'); }
   }
   if (!list.length) { el.innerHTML = `<p class="caption"><b>${dLabel(date)}</b></p><p class="hint">這一天沒有可預約的時段，請換一天</p>`; return; }
-  // 有些時段只排得下比較短的評估（例如只夠第一次），在時段下面標出來
-  const lim = x => { if (S.moving || !x.ok) return ''; const r = roundsAt(st, date, x.start); return r.length < 3 ? '限' + roundsText(r) : ''; };
-  const marks = list.map(lim);
   el.innerHTML = `<p class="caption"><b>${dLabel(date)}</b></p><div class="slots">` +
-    list.map((x, i) => `<button type="button" class="slot${marks[i] ? ' has-lim' : ''}" data-act="pick-time" data-s="${x.start}" ${x.ok ? '' : 'disabled'} aria-pressed="${x.start === S.sel.start}" aria-label="${fmt(x.start)} 開始${x.ok ? (marks[i] ? '，' + marks[i] + '評估' : '') : '，已被預約'}">${fmt(x.start)}${marks[i] ? `<span class="lim">${marks[i]}</span>` : ''}</button>`).join('') + '</div>' +
-    (marks.some(Boolean) ? `<p class="hint">第一次評估約 ${U.durOf(st, 1)} 分鐘，第二、三次約 ${U.durOf(st, 2)} 分鐘；標示「限第1次」的時段只排得下第一次評估</p>` : '');
+    list.map(x => `<button type="button" class="slot" data-act="pick-time" data-s="${x.start}" ${x.ok ? '' : 'disabled'} aria-pressed="${x.start === S.sel.start}" aria-label="${fmt(x.start)} 開始${x.ok ? '' : '，已被預約'}">${fmt(x.start)}</button>`).join('') + '</div>';
 }
 
 function renderForm() {
@@ -128,7 +123,7 @@ function renderForm() {
       <div class="field"><span id="c-round-label">第幾次評估<b class="req" aria-hidden="true">*</b></span>
         <div class="seg" role="radiogroup" aria-labelledby="c-round-label">${[1, 2, 3].map(n => `<label><input type="radio" name="c-round" id="c-round-${n}" data-cf="round" value="${n}" ${String(S.form.round) === String(n) ? 'checked' : ''} ${fit.includes(n) ? '' : 'disabled'}><span>第${n}次</span></label>`).join('')}</div></div>
     </div>
-    ${fit.length < 3 ? `<p class="hint">這個時段只排得下${roundsText(fit)}評估。${roundsText([1, 2, 3].filter(n => !fit.includes(n)))}評估約需 ${Math.max(...[1, 2, 3].filter(n => !fit.includes(n)).map(n => U.durOf(st, n)))} 分鐘，請選其他時段</p>` : ''}
+
     <div class="g2">
       <label class="field"><span>聯絡電話<b class="req" aria-hidden="true">*</b></span><input type="tel" id="c-phone" data-cf="phone" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="0912345678" required value="${esc(S.form.phone)}"></label>
       <label class="field"><span>Email<b class="req" aria-hidden="true">*</b></span><input type="email" id="c-email" data-cf="email" autocomplete="email" maxlength="100" placeholder="name@gmail.com" required value="${esc(S.form.email)}"></label>

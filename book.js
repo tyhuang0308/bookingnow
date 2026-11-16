@@ -13,7 +13,11 @@ const activeStaff = () => S.pub.staff.filter(s => s.active !== false && s.name).
 const selStaff = () => activeStaff().find(s => s.id === S.sel.staffId) || null;
 // 修改預約時，原本這筆預約佔用的時段要視為空的
 const pubSlots = () => S.moving ? S.pub.slots.filter(x => x.bookingId !== S.moving.bookingId) : S.pub.slots;
-const avail = (st, date) => U.available(st, date, pubSlots(), S.pub.rooms);
+// dur：每場幾分鐘。沒給時：修改預約用原本的長度，新預約用最短的評估時長（第一次評估）
+const avail = (st, date, dur) => U.available(st, date, pubSlots(), S.pub.rooms, dur || (S.moving ? S.moving.end - S.moving.start : 0));
+/** 這個時段排得下第幾次評估 */
+const roundsAt = (st, date, start) => U.roundsAt(st, date, start, pubSlots(), S.pub.rooms);
+const roundsText = list => '第' + list.join('、') + '次';
 
 /* 這台裝置預約過的代碼 */
 function loadDevice() { try { S.device = (JSON.parse(localStorage.getItem('booking-mine') || '[]') || []).filter(b => b && b.code && b.date >= today()); } catch (e) { S.device = []; } }
@@ -81,8 +85,12 @@ function renderTimes() {
     if (!S.busy) { renderForm(); U.toast('你選的時段剛被別人預約了，請重新選擇'); }
   }
   if (!list.length) { el.innerHTML = `<p class="caption"><b>${dLabel(date)}</b></p><p class="hint">這一天沒有可預約的時段，請換一天</p>`; return; }
+  // 有些時段只排得下比較短的評估（例如只夠第一次），在時段下面標出來
+  const lim = x => { if (S.moving || !x.ok) return ''; const r = roundsAt(st, date, x.start); return r.length < 3 ? '限' + roundsText(r) : ''; };
+  const marks = list.map(lim);
   el.innerHTML = `<p class="caption"><b>${dLabel(date)}</b></p><div class="slots">` +
-    list.map(x => `<button type="button" class="slot" data-act="pick-time" data-s="${x.start}" ${x.ok ? '' : 'disabled'} aria-pressed="${x.start === S.sel.start}" aria-label="${fmt(x.start)} 開始${x.ok ? '' : '，已被預約'}">${fmt(x.start)}</button>`).join('') + '</div>';
+    list.map((x, i) => `<button type="button" class="slot${marks[i] ? ' has-lim' : ''}" data-act="pick-time" data-s="${x.start}" ${x.ok ? '' : 'disabled'} aria-pressed="${x.start === S.sel.start}" aria-label="${fmt(x.start)} 開始${x.ok ? (marks[i] ? '，' + marks[i] + '評估' : '') : '，已被預約'}">${fmt(x.start)}${marks[i] ? `<span class="lim">${marks[i]}</span>` : ''}</button>`).join('') + '</div>' +
+    (marks.some(Boolean) ? `<p class="hint">第一次評估約 ${U.durOf(st, 1)} 分鐘，第二、三次約 ${U.durOf(st, 2)} 分鐘；標示「限第1次」的時段只排得下第一次評估</p>` : '');
 }
 
 function renderForm() {
@@ -91,7 +99,7 @@ function renderForm() {
     const d = S.done;
     el.innerHTML = `<div class="success" role="status"><h3>${d.moved ? '修改成功' : '預約成功'}</h3>
       ${d.moved && d.from ? `<p class="hint">原本：${esc(d.from.staffName)} ${dLabel(d.from.date)} ${fmt(d.from.start)}</p>` : ''}
-      <p>${d.moved ? '新的時段：' : ''}<b>${esc(d.staffName)}</b>　<span class="when">${dLabel(d.date)} ${fmt(d.start)}</span></p>
+      <p>${d.moved ? '新的時段：' : ''}<b>${esc(d.staffName)}</b>　<span class="when">${dLabel(d.date)} ${fmt(d.start)}–${fmt(d.end)}</span></p>
       <p>預約代碼${d.moved ? '（不變）' : ''}</p><p class="code">${esc(d.code)}</p>
       <p class="hint">請截圖或記下此預約代碼。需要查詢、修改或取消時，可至下方「查詢、修改或取消預約」輸入孩子姓名與聯絡電話即可</p>
       <div><button type="button" class="btn ghost small" data-act="again">再預約一個時段</button></div></div>`;
@@ -101,7 +109,7 @@ function renderForm() {
     if (!st || !S.sel.date || S.sel.start == null) { el.innerHTML = '<p class="hint">選擇新的時段後，按「確認修改」即可，聯絡資料不用重新填寫</p>'; return; }
     el.innerHTML = `<form id="move-form" class="form" novalidate>
       <p class="hint">原本：${esc(S.moving.staffName)} ${dLabel(S.moving.date)} ${fmt(S.moving.start)}</p>
-      <div class="summary"><span class="dot" style="background:${color(st.color)}"></span><b>${esc(st.name)}</b><span class="when">${dLabel(S.sel.date)} ${fmt(S.sel.start)}</span></div>
+      <div class="summary"><span class="dot" style="background:${color(st.color)}"></span><b>${esc(st.name)}</b><span class="when">${dLabel(S.sel.date)} ${fmt(S.sel.start)}–${fmt(S.sel.start + S.moving.end - S.moving.start)}</span></div>
       <p class="err" id="c-err" role="alert"></p>
       <div class="acts" style="justify-content:flex-start"><button type="submit" class="btn primary" id="c-submit">確認修改</button><button type="button" class="btn ghost" data-act="move-cancel">取消修改</button></div>
     </form>`;
@@ -111,13 +119,16 @@ function renderForm() {
     el.innerHTML = '<p class="hint">選擇時段後，填寫聯絡資料</p>';
     return;
   }
+  const fit = roundsAt(st, S.sel.date, S.sel.start);
+  if (S.form.round && !fit.includes(Number(S.form.round))) S.form.round = '';
   el.innerHTML = `<form id="book-form" class="form" novalidate>
-    <div class="summary"><span class="dot" style="background:${color(st.color)}"></span><b>${esc(st.name)}</b><span class="when">${dLabel(S.sel.date)} ${fmt(S.sel.start)}</span></div>
+    <div class="summary"><span class="dot" style="background:${color(st.color)}"></span><b>${esc(st.name)}</b><span class="when" id="c-when">${whenText(st)}</span></div>
     <div class="g2">
       <label class="field"><span>孩子姓名<b class="req" aria-hidden="true">*</b></span><input type="text" id="c-name" data-cf="name" autocomplete="off" maxlength="40" required value="${esc(S.form.name)}"></label>
       <div class="field"><span id="c-round-label">第幾次評估<b class="req" aria-hidden="true">*</b></span>
-        <div class="seg" role="radiogroup" aria-labelledby="c-round-label">${[1, 2, 3].map(n => `<label><input type="radio" name="c-round" id="c-round-${n}" data-cf="round" value="${n}" ${String(S.form.round) === String(n) ? 'checked' : ''}><span>第${n}次</span></label>`).join('')}</div></div>
+        <div class="seg" role="radiogroup" aria-labelledby="c-round-label">${[1, 2, 3].map(n => `<label><input type="radio" name="c-round" id="c-round-${n}" data-cf="round" value="${n}" ${String(S.form.round) === String(n) ? 'checked' : ''} ${fit.includes(n) ? '' : 'disabled'}><span>第${n}次</span></label>`).join('')}</div></div>
     </div>
+    ${fit.length < 3 ? `<p class="hint">這個時段只排得下${roundsText(fit)}評估。${roundsText([1, 2, 3].filter(n => !fit.includes(n)))}評估約需 ${Math.max(...[1, 2, 3].filter(n => !fit.includes(n)).map(n => U.durOf(st, n)))} 分鐘，請選其他時段</p>` : ''}
     <div class="g2">
       <label class="field"><span>聯絡電話<b class="req" aria-hidden="true">*</b></span><input type="tel" id="c-phone" data-cf="phone" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="0912345678" required value="${esc(S.form.phone)}"></label>
       <label class="field"><span>Email<b class="req" aria-hidden="true">*</b></span><input type="email" id="c-email" data-cf="email" autocomplete="email" maxlength="100" placeholder="name@gmail.com" required value="${esc(S.form.email)}"></label>
@@ -126,6 +137,12 @@ function renderForm() {
     <p class="err" id="c-err" role="alert"></p>
     <div><button type="submit" class="btn primary" id="c-submit">確認預約</button></div>
   </form>`;
+}
+
+/** 表單上方的時間：選了第幾次評估後，加上結束時間 */
+function whenText(st) {
+  const r = Number(S.form.round);
+  return dLabel(S.sel.date) + ' ' + fmt(S.sel.start) + (r ? '–' + fmt(S.sel.start + U.durOf(st, r)) + `（約 ${U.durOf(st, r)} 分鐘）` : ' 開始');
 }
 
 /* 台灣手機：09 開頭 10 碼（可輸入 +886 9…、空格或 -），格式正確時回傳 09xxxxxxxx */
@@ -146,8 +163,12 @@ async function submitBooking() {
   if (!f.phone) { err.textContent = '聯絡電話格式錯誤，請輸入09開頭的10碼手機號碼，例如0912345678'; $('c-phone').focus(); return; }
   if (!f.email) { err.textContent = '請填寫 Email。'; $('c-email').focus(); return; }
   if (!EMAIL_RE.test(f.email)) { err.textContent = 'Email格式錯誤，請輸入Gmail或Yahoo信箱，例如name@gmail.com、name@yahoo.com.tw'; $('c-email').focus(); return; }
-  const sl = st && avail(st, S.sel.date).find(x => x.start === S.sel.start);
-  if (!sl || !sl.ok) { err.textContent = '這個時段剛被預約走了，請選擇其他時段。'; renderTimes(); return; }
+  const sl = st && avail(st, S.sel.date, U.durOf(st, f.round)).find(x => x.start === S.sel.start);
+  if (!sl || !sl.ok) {
+    const short = st && avail(st, S.sel.date).some(x => x.start === S.sel.start && x.ok);
+    err.textContent = short ? `這個時段排不下第${f.round}次評估（約 ${U.durOf(st, f.round)} 分鐘），請選擇其他時段` : '這個時段剛被預約走了，請選擇其他時段。';
+    renderTimes(); return;
+  }
   err.textContent = ''; btn.disabled = true; btn.textContent = '送出中…'; S.busy = true;
   try {
     const r = await store.book({ staff: st, date: S.sel.date, start: sl.start, end: sl.end, sameDay: S.pub.slots.filter(x => x.date === S.sel.date), name: f.name, round: f.round, phone: f.phone, email: f.email, note: f.note });
@@ -286,7 +307,10 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => {
   const t = e.target;
-  if (t.dataset && t.dataset.cf) { S.form[t.dataset.cf] = t.value; const er = $('c-err'); if (er) er.textContent = ''; }
+  if (t.dataset && t.dataset.cf) {
+    S.form[t.dataset.cf] = t.value; const er = $('c-err'); if (er) er.textContent = '';
+    if (t.dataset.cf === 'round' && $('c-when') && selStaff()) $('c-when').textContent = whenText(selStaff());
+  }
   if (t.id === 'l-code' || t.id === 'l-name' || t.id === 'l-phone') $('l-err').textContent = '';
 });
 document.addEventListener('submit', async e => {

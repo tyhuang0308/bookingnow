@@ -33,9 +33,24 @@ const U = {
   slotKey: (staffId, date, start) => staffId + '_' + date + '_' + start
 };
 
-/** 某位人員在星期 day 的所有時段（分鐘） */
-U.daySlots = function (st, day) {
-  const dur = Math.max(5, U.num(st.duration, 60)), buf = Math.max(0, U.num(st.buffer, 0)), out = [];
+/* ---- 評估時長：第一次評估（duration1）比第二、三次（duration）短 ----
+   舊資料沒有 duration1 時，三次評估都用 duration，和以前一樣 */
+U.durOf = function (st, round) {
+  const d2 = Math.max(5, U.num(st && st.duration, 60));
+  return Number(round) === 1 ? Math.max(5, U.num(st && st.duration1, d2)) : d2;
+};
+U.minDur = st => Math.min(U.durOf(st, 1), U.durOf(st, 2));
+const gcd = (a, b) => b ? gcd(b, a % b) : a;
+/** 可預約時段的間距：兩種「時長＋間隔」的最大公因數（例如 45＋15 和 75＋15 → 每 30 分鐘一個起點） */
+U.stepOf = function (st) {
+  const buf = Math.max(0, U.num(st.buffer, 0));
+  return Math.max(15, gcd(U.durOf(st, 1) + buf, U.durOf(st, 2) + buf));
+};
+
+/** 某位人員在星期 day、每場 dur 分鐘時，一場接一場排滿的時段（後台「時段預覽」用） */
+U.daySlots = function (st, day, dur) {
+  dur = dur || U.durOf(st, 2);
+  const buf = Math.max(0, U.num(st.buffer, 0)), out = [];
   for (const r of ((st.weekly && st.weekly[day]) || [])) {
     const s = U.toMin(r.s), e = U.toMin(r.e);
     if (!(s < e)) continue;
@@ -61,20 +76,52 @@ U.roomFree = function (s, e, occupied, extras) {
   });
 };
 
-/** 某天的時段與狀態；slots = 已被預約的時段清單（所有研究人員），rooms = 各日期加開的場地 */
-U.available = function (st, date, slots, rooms) {
+/**
+ * 某天還可以預約的時段（每場 dur 分鐘；沒給 dur 時用最短的評估時長，也就是第一次評估）。
+ * slots = 已被預約的時段清單（所有研究人員），rooms = 各日期加開的場地。
+ *
+ * 推算方式：
+ *  1. 開放時間扣掉這位研究人員已預約的時段（前後各留「段與段間隔」）與部分時段休假，剩下一段一段的空檔
+ *  2. 每段空檔從開頭開始，每隔 U.stepOf 分鐘一個起點，排得下 dur 分鐘才列出來
+ *  3. 起點前面如果只剩一小段、連最短的評估都排不進去，就不列這個起點，避免時間被切碎
+ * 已被這位研究人員預約的時段也會列出來（taken），家長頁顯示為已被預約。
+ */
+U.available = function (st, date, slots, rooms, dur) {
   if ((st.closedDates || []).includes(date)) return [];
-  // 部分時段休假：和休假時間重疊的時段不開放
-  const off = (st.closedTimes || []).filter(x => x.d === date).map(x => ({ s: U.toMin(x.s), e: U.toMin(x.e) }));
+  dur = dur || U.minDur(st);
+  const buf = Math.max(0, U.num(st.buffer, 0)), minBlock = U.minDur(st) + buf, step = U.stepOf(st);
+  // 部分時段休假
+  const off = (st.closedTimes || []).filter(x => x.d === date).map(x => ({ s: U.toMin(x.s), e: U.toMin(x.e) })).filter(x => x.s < x.e);
   const cutoff = Date.now() + U.num(st.notice, 0) * 3600e3, base = parseD(date).getTime();
   const sameDay = (slots || []).filter(x => x.date === date);
   const mine = sameDay.filter(x => x.staffId === st.id);
   const extras = (rooms && rooms[date] && rooms[date].extra) || [];
-  return U.daySlots(st, parseD(date).getDay()).filter(sl => !off.some(o => sl.start < o.e && o.s < sl.end)).map(sl => {
-    const past = base + sl.start * 60000 < cutoff;
-    const busy = mine.some(b => sl.start < b.end && b.start < sl.end) || !U.roomFree(sl.start, sl.end, sameDay, extras);
-    return Object.assign({}, sl, { past, taken: busy, ok: !past && !busy });
+  const blocks = mine.map(b => ({ s: b.start - buf, e: b.end + buf })).concat(off);
+  const ranges = ((st.weekly && st.weekly[parseD(date).getDay()]) || []).map(r => ({ s: U.toMin(r.s), e: U.toMin(r.e) })).filter(r => r.s < r.e);
+  const out = [];
+  for (const r of ranges) {
+    let gaps = [r];
+    for (const o of blocks) gaps = gaps.flatMap(g => (o.e <= g.s || o.s >= g.e) ? [g] : [{ s: g.s, e: o.s }, { s: o.e, e: g.e }].filter(x => x.e > x.s));
+    for (const g of gaps) {
+      for (let t = g.s; t + dur <= g.e; t += step) {
+        if (t !== g.s && t - g.s < minBlock) continue;
+        const past = base + t * 60000 < cutoff;
+        const busy = !U.roomFree(t, t + dur, sameDay, extras);
+        out.push({ start: t, end: t + dur, past, taken: busy, ok: !past && !busy });
+      }
+    }
+  }
+  mine.forEach(b => {
+    if (ranges.some(r => b.start < r.e && r.s < b.end) && !out.some(x => x.start === b.start)) {
+      out.push({ start: b.start, end: b.end, past: base + b.start * 60000 < cutoff, taken: true, ok: false });
+    }
   });
+  return out.sort((a, b) => a.start - b.start);
+};
+
+/** 這個起點排得下第幾次評估（回傳 [1, 2, 3] 裡排得下的） */
+U.roundsAt = function (st, date, start, slots, rooms) {
+  return [1, 2, 3].filter(n => U.available(st, date, slots, rooms, U.durOf(st, n)).some(x => x.start === start && x.ok));
 };
 
 let toastTimer;
@@ -417,7 +464,7 @@ function firebaseStore(needAuth) {
 
 /* ================= 預覽模式（範例資料，只存在這個瀏覽器） ================= */
 function demoStore() {
-  const KEY = 'booking-demo-v9';
+  const KEY = 'booking-demo-v10';
   const subs = new Set();
   let db = load(), user = null;
   const authSubs = new Set();
@@ -427,7 +474,7 @@ function demoStore() {
   function seed() {
     const wk = () => [{ s: '09:00', e: '12:00' }, { s: '14:00', e: '17:00' }];
     const d = {
-      v: 9,
+      v: 10,
       rooms: {},
       admins: ['teacher.chen@example.com', 'you@example.com', 'junior.lin@example.com'],
       adminNames: { 'teacher.chen@example.com': '陳老師', 'you@example.com': '黃同學', 'junior.lin@example.com': '林學弟' },
@@ -436,7 +483,7 @@ function demoStore() {
       lineStaff: { demolin: ['U-demo'] },
       assists: {},
       staff: [
-        { id: 'demolin', name: '林老師（範例）', role: '職能治療個別課', color: COLORS[0], duration: 50, buffer: 10, bookUntil: U.addDays(U.today(), 20), notice: 12, active: true, order: 1, weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [{ s: '09:00', e: '12:00' }], 0: [] }, closedDates: [] },
+        { id: 'demolin', name: '林老師（範例）', role: '職能治療個別課', color: COLORS[0], duration1: 45, duration: 75, buffer: 15, bookUntil: U.addDays(U.today(), 20), notice: 12, active: true, order: 1, weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [{ s: '09:00', e: '12:00' }], 0: [] }, closedDates: [] },
         { id: 'demochen', name: '陳老師（範例）', role: '感覺統合團體課', color: COLORS[1], duration: 90, buffer: 30, bookUntil: U.addDays(U.today(), 27), notice: 24, active: true, order: 2, weekly: { 1: [], 2: [{ s: '14:00', e: '18:00' }], 3: [], 4: [{ s: '14:00', e: '18:00' }], 5: [], 6: [{ s: '09:00', e: '13:00' }], 0: [] }, closedDates: [] }
       ],
       bookings: []
@@ -446,14 +493,14 @@ function demoStore() {
     while (i < 3) {
       day = U.addDays(day, 1);
       const w = parseD(day).getDay(); if (w === 0 || w === 6) continue;
-      const start = [9 * 60, 10 * 60, 14 * 60][i];
-      d.bookings.push({ id: 'demo' + i, code: ['K7M2QXRA', 'P3RD8NWE', 'H9TW4CJB'][i], staffId: 'demolin', staffName: '林老師（範例）', date: day, start, end: start + 50, round: i + 1, name: people[i][0], phone: people[i][1], email: '', note: people[i][2], status: 'booked', slotKey: U.slotKey('demolin', day, start) });
+      const start = [9 * 60, 10 * 60, 14 * 60][i], dur = i === 0 ? 45 : 75;
+      d.bookings.push({ id: 'demo' + i, code: ['K7M2QXRA', 'P3RD8NWE', 'H9TW4CJB'][i], staffId: 'demolin', staffName: '林老師（範例）', date: day, start, end: start + dur, round: i + 1, name: people[i][0], phone: people[i][1], email: '', note: people[i][2], status: 'booked', slotKey: U.slotKey('demolin', day, start) });
       i++;
     }
     return d;
   }
   function load() {
-    try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.v === 9) return v; } catch (e) { /* 無法使用瀏覽器儲存 */ }
+    try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.v === 10) return v; } catch (e) { /* 無法使用瀏覽器儲存 */ }
     const s = seed(); try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* 略過 */ }
     return s;
   }
@@ -479,7 +526,7 @@ function demoStore() {
   S.book = function (p) {
     const st = db.staff.find(s => s.id === p.staff.id && s.active);
     if (!st) return Promise.reject(new Error('找不到這位研究人員。'));
-    const sl = p.custom ? demoCustom(st, p.date, p.start, p.end, null) : U.available(st, p.date, slots(), rooms()).find(x => x.start === p.start);
+    const sl = p.custom ? demoCustom(st, p.date, p.start, p.end, null) : U.available(st, p.date, slots(), rooms(), p.end - p.start).find(x => x.start === p.start);
     if (!sl || sl.taken || (!p.createdBy && sl.past)) return Promise.reject(new Error('這個時段剛被預約走了，請選擇其他時段。'));
     const b = { id: U.rid(), code: U.genCode(), staffId: st.id, staffName: st.name, date: p.date, start: sl.start, end: sl.end, name: p.name, round: p.round, phone: p.phone, email: p.email, note: p.note, status: 'booked', slotKey: U.slotKey(st.id, p.date, sl.start), createdBy: p.createdBy || '' };
     db.bookings.push(b); save();
@@ -491,7 +538,7 @@ function demoStore() {
     if (b.status !== 'booked') return Promise.reject(new Error('這筆預約已經取消了，無法修改。'));
     const st = db.staff.find(s => s.id === p.staff.id);
     const others = slots().filter(x => x.bookingId !== b.id);
-    const sl = p.custom ? demoCustom(st, p.date, p.start, p.end, b.id) : U.available(st, p.date, others, rooms()).find(x => x.start === p.start);
+    const sl = p.custom ? demoCustom(st, p.date, p.start, p.end, b.id) : U.available(st, p.date, others, rooms(), p.end - p.start).find(x => x.start === p.start);
     if (!sl || (sl.taken) || (!p.booking && sl.past)) return Promise.reject(new Error('這個時段剛被預約走了，請選擇其他時段。'));
     Object.assign(b, { staffId: st.id, staffName: st.name, date: p.date, start: sl.start, end: sl.end, slotKey: U.slotKey(st.id, p.date, sl.start), movedAt: Date.now() });
     save(); return later(ticket(b));

@@ -105,7 +105,7 @@ function shortDate(s) { const d = U.parseD(s); return (d.getMonth() + 1) + '/' +
 function staffMeta(s) {
   const days = ORDER.filter(d => (s.weekly && s.weekly[d] || []).length).map(d => WD[d]).join('');
   const until = untilOf(s);
-  return `${num(s.duration, 60)} 分 · ${days ? '週' + days : '尚未設定時段'} · ${until < today() ? '已停止開放' : '開放至 ' + shortDate(until)}`;
+  return `${U.durOf(s, 1) === U.durOf(s, 2) ? U.durOf(s, 2) : U.durOf(s, 1) + '／' + U.durOf(s, 2)} 分 · ${days ? '週' + days : '尚未設定時段'} · ${until < today() ? '已停止開放' : '開放至 ' + shortDate(until)}`;
 }
 function renderStaffList() {
   const el = $('a-list'); if (!el) return;
@@ -115,12 +115,12 @@ function renderStaffList() {
 }
 function blankDraft() {
   const used = aStaff().map(s => color(s.color)), wk = () => [{ s: '09:00', e: '12:00' }, { s: '14:00', e: '18:00' }];
-  return { name: '', role: '', color: COLORS.find(c => !used.includes(c)) || COLORS[0], duration: 60, buffer: 0, bookUntil: U.addDays(today(), 29), notice: 2, active: true,
+  return { name: '', role: '', color: COLORS.find(c => !used.includes(c)) || COLORS[0], duration1: 45, duration: 75, buffer: 15, bookUntil: U.addDays(today(), 29), notice: 2, active: true,
     weekly: { 1: wk(), 2: wk(), 3: wk(), 4: wk(), 5: wk(), 6: [], 0: [] }, closedDates: [], closedTimes: [], calEmail: '' };
 }
 function cloneStaff(s) {
   const w = {}; for (const d of ORDER) w[d] = ((s.weekly && s.weekly[d]) || []).map(r => ({ s: r.s, e: r.e }));
-  return { name: s.name || '', role: s.role || '', color: color(s.color), duration: num(s.duration, 60), buffer: num(s.buffer, 0), bookUntil: untilOf(s), notice: num(s.notice, 0), active: s.active !== false, weekly: w, closedDates: (s.closedDates || []).slice(), closedTimes: (s.closedTimes || []).map(x => ({ d: x.d, s: x.s, e: x.e })), calEmail: (S.data && S.data.calendars && S.data.calendars[s.id]) || '' };
+  return { name: s.name || '', role: s.role || '', color: color(s.color), duration1: U.durOf(s, 1), duration: U.durOf(s, 2), buffer: num(s.buffer, 0), bookUntil: untilOf(s), notice: num(s.notice, 0), active: s.active !== false, weekly: w, closedDates: (s.closedDates || []).slice(), closedTimes: (s.closedTimes || []).map(x => ({ d: x.d, s: x.s, e: x.e })), calEmail: (S.data && S.data.calendars && S.data.calendars[s.id]) || '' };
 }
 function renderEditor() {
   const el = $('a-editor'), d = S.draft; if (!el) return;
@@ -146,12 +146,15 @@ function renderEditor() {
     <fieldset class="field"><legend>代表色</legend><div class="swatches">${COLORS.map((c, i) => `<label><input type="radio" name="f-color" id="f-color-${i}" value="${c}" ${c === color(d.color) ? 'checked' : ''} aria-label="顏色 ${i + 1}"><span style="background:${c}"></span></label>`).join('')}</div></fieldset>
     <div>
       <div class="g4">
-        <label class="field"><span>每段時長</span><span class="unit"><input type="number" id="f-dur" min="5" max="480" step="5" value="${d.duration}"><em>分鐘</em></span></label>
+        <label class="field"><span>第一次評估時長</span><span class="unit"><input type="number" id="f-dur1" min="5" max="480" step="5" value="${d.duration1}"><em>分鐘</em></span></label>
+        <label class="field"><span>第二、三次評估時長</span><span class="unit"><input type="number" id="f-dur" min="5" max="480" step="5" value="${d.duration}"><em>分鐘</em></span></label>
         <label class="field"><span>段與段間隔</span><span class="unit"><input type="number" id="f-buf" min="0" max="240" step="5" value="${d.buffer}"><em>分鐘</em></span></label>
-        <label class="field"><span>開放預約到</span><input type="date" id="f-until" min="${t}" value="${esc(d.bookUntil || '')}"></label>
         <label class="field"><span>最晚需提前</span><span class="unit"><input type="number" id="f-notice" min="0" max="168" value="${d.notice}"><em>小時</em></span></label>
       </div>
-      <div class="quick" style="margin-top:8px">常用時長：${[30, 40, 45, 50, 60, 90].map(v => `<button type="button" class="chip" data-act="ed-dur" data-v="${v}" aria-pressed="${d.duration === v}">${v}</button>`).join('')}</div>
+      <p class="hint" style="margin-top:8px">家長預約後，系統會依每一次評估的時長和已預約的時段，自動推算還可以預約的時段。例如第一次評估結束後，下一場會接著排，不用等滿一整段</p>
+      <div class="g4" style="margin-top:14px">
+        <label class="field"><span>開放預約到</span><input type="date" id="f-until" min="${t}" value="${esc(d.bookUntil || '')}"></label>
+      </div>
     </div>
     <label class="switch"><input type="checkbox" id="f-active" ${d.active ? 'checked' : ''}> 開放家長預約這位研究人員</label>
     <section><h3>每週開放時段</h3><div class="week">${ORDER.map(day => {
@@ -188,7 +191,7 @@ function readEditor() {
   const d = S.draft; if (!d || !$('f-name')) return;
   d.name = $('f-name').value; d.role = $('f-role').value; d.calEmail = $('f-cal').value.trim().toLowerCase(); d.bookUntil = $('f-until').value;
   const c = document.querySelector('input[name="f-color"]:checked'); if (c) d.color = c.value;
-  d.duration = num($('f-dur').value, 0); d.buffer = num($('f-buf').value, 0); d.notice = num($('f-notice').value, 0);
+  d.duration1 = num($('f-dur1').value, 0); d.duration = num($('f-dur').value, 0); d.buffer = num($('f-buf').value, 0); d.notice = num($('f-notice').value, 0);
   d.active = $('f-active').checked;
   for (const day of ORDER) {
     if (!$('f-day-' + day).checked) { d.weekly[day] = []; continue; }
@@ -198,18 +201,20 @@ function readEditor() {
 }
 function problems(d) {
   const out = [];
-  if (!(d.duration >= 5 && d.duration <= 480)) out.push('每段時長請填5到480分鐘');
+  if (!(d.duration1 >= 5 && d.duration1 <= 480)) out.push('第一次評估時長請填5到480分鐘');
+  if (!(d.duration >= 5 && d.duration <= 480)) out.push('第二、三次評估時長請填5到480分鐘');
+  const minD = Math.min(d.duration1 >= 5 ? d.duration1 : 480, d.duration >= 5 ? d.duration : 480);
   for (const day of ORDER) (d.weekly[day] || []).forEach((r, i) => {
     const s = toMin(r.s), e = toMin(r.e);
     if (isNaN(s) || isNaN(e)) out.push(`週${WD[day]}第${i + 1}段的時間還沒填完整`);
     else if (e <= s) out.push(`週${WD[day]}第${i + 1}段的結束時間要晚於開始時間`);
-    else if (d.duration >= 5 && e - s < d.duration) out.push(`週${WD[day]}第${i + 1}段（${r.s}–${r.e}）比一段時長還短，排不進任何時段`);
+    else if (e - s < minD) out.push(`週${WD[day]}第${i + 1}段（${r.s}–${r.e}）比評估時長還短，排不進任何時段`);
   });
   return out;
 }
 function updatePreview() {
   const el = $('ed-preview'), d = S.draft; if (!el || !d) return;
-  const probs = problems(d), per = ORDER.map(day => ({ day, sl: d.duration >= 5 ? U.daySlots(d, day) : [] }));
+  const probs = problems(d), per = ORDER.map(day => ({ day, sl: d.duration >= 5 ? U.daySlots(d, day, d.duration) : [] }));
   const total = per.reduce((a, p) => a + p.sl.length, 0);
   let lo = 24 * 60, hi = 0; per.forEach(p => p.sl.forEach(x => { lo = Math.min(lo, x.start); hi = Math.max(hi, x.end); }));
   if (hi <= lo) { lo = 8 * 60; hi = 18 * 60; }
@@ -217,11 +222,10 @@ function updatePreview() {
   const span = hi - lo, stepH = span > 600 ? 3 : span > 360 ? 2 : 1;
   let axis = ''; for (let h = lo; h <= hi; h += stepH * 60) axis += `<span style="left:${(h - lo) / span * 100}%">${fmt(h)}</span>`;
   const col = color(d.color);
-  el.innerHTML = `<p class="wk-total">每週共 <b>${total}</b> 個可預約時段 · 每段 ${d.duration || '—'} 分鐘${d.buffer ? `，段間隔 ${d.buffer} 分鐘` : ''}</p>
+  el.innerHTML = `<p class="wk-total">每週最多可排 <b>${total}</b> 場第二、三次評估（每場 ${d.duration || '—'} 分鐘${d.buffer ? `，間隔 ${d.buffer} 分鐘` : ''}）。有第一次評估時，可以多排一些</p>
   <div class="wk"><div class="wk-row"><span></span><div class="axis">${axis}</div><span></span></div>
   ${per.map(p => `<div class="wk-row"><span class="lb">週${WD[p.day]}</span><div class="track">${p.sl.map(x => `<span class="blk" title="${fmt(x.start)}–${fmt(x.end)}" style="left:${(x.start - lo) / span * 100}%;width:calc(${(x.end - x.start) / span * 100}% - 2px);background:${col}"></span>`).join('')}</div><span class="ct">${p.sl.length || '—'}</span></div>`).join('')}</div>
   ${probs.map(p => `<p class="warn">${esc(p)}</p>`).join('')}`;
-  document.querySelectorAll('[data-act="ed-dur"]').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === d.duration)));
 }
 async function saveStaff() {
   readEditor(); const d = S.draft, err = $('ed-err');
@@ -239,7 +243,7 @@ async function saveStaff() {
   for (const day of ORDER) weekly[day] = (d.weekly[day] || []).filter(r => toMin(r.s) < toMin(r.e)).map(r => ({ s: r.s, e: r.e })).sort((a, b) => toMin(a.s) - toMin(b.s));
   const data = {
     name, role: d.role.trim().slice(0, 60), color: color(d.color),
-    duration: Math.round(d.duration), buffer: Math.max(0, Math.round(d.buffer)),
+    duration1: Math.round(d.duration1), duration: Math.round(d.duration), buffer: Math.max(0, Math.round(d.buffer)),
     bookUntil: d.bookUntil, notice: Math.max(0, Math.round(d.notice)),
     active: !!d.active, weekly, closedDates: d.closedDates.filter(c => c >= today()).sort(),
     closedTimes: d.closedTimes.filter(x => x.d >= today()).sort((a, b) => a.d.localeCompare(b.d) || toMin(a.s) - toMin(b.s)),
@@ -521,10 +525,10 @@ function adminSlots(excludeId) {
     .map(b => ({ staffId: b.staffId, date: b.date, start: b.start, end: b.end, bookingId: b.id }));
 }
 /** 後台可選的時段：不受「最晚需提前」限制，但不能選已經過去或被佔用的時段 */
-function adminChoices(st, date, excludeId) {
+function adminChoices(st, date, excludeId, dur) {
   if (!st || !date) return [];
   const now = Date.now(), base = U.parseD(date).getTime();
-  return U.available(st, date, adminSlots(excludeId), S.data.rooms).map(x => Object.assign({}, x, { ok: !x.taken && base + x.start * 60000 > now }));
+  return U.available(st, date, adminSlots(excludeId), S.data.rooms, dur).map(x => Object.assign({}, x, { ok: !x.taken && base + x.start * 60000 > now }));
 }
 /** 自訂時間：檢查是否已過、是否和同一位研究人員的其他預約重疊、共用場地是否還有空位 */
 function customProblem(st, date, s, e, excludeId) {
@@ -548,7 +552,9 @@ function bkFormHTML() {
           <label class="field"><span>結束</span><input type="time" id="bf-ce" step="300" value="${esc(f.ce || '')}"></label></div>
         <p class="hint">自訂時間不受「每週開放時段」與休假限制，但不能和其他預約或共用場地衝突</p>`
     : (!list.length ? '<p class="hint">這一天沒有可預約的固定時段，可以改用自訂時間</p>'
-      : '<div class="slots">' + list.map(x => `<button type="button" class="slot" data-act="bf-slot" data-s="${x.start}" ${x.ok ? '' : 'disabled'} aria-pressed="${x.start === f.start}">${fmt(x.start)}</button>`).join('') + '</div>');
+      : '<div class="slots">' + list.map(x => { const r = x.ok ? adminRounds(st, f.date, x.start, f.id) : [1, 2, 3], lim = r.length < 3 ? '限第' + r.join('、') + '次' : '';
+          return `<button type="button" class="slot${lim ? ' has-lim' : ''}" data-act="bf-slot" data-s="${x.start}" ${x.ok ? '' : 'disabled'} aria-pressed="${x.start === f.start}">${fmt(x.start)}${lim ? `<span class="lim">${lim}</span>` : ''}</button>`; }).join('') + '</div>');
+  const fit = !f.custom && st && f.date && f.start != null ? adminRounds(st, f.date, f.start, f.id) : [1, 2, 3];
   return `<form id="bk-form" class="bk-form" novalidate>
     <h4>${f.id ? '修改預約' : '新增預約（後台代約）'}</h4>
     <div class="g2">
@@ -558,7 +564,7 @@ function bkFormHTML() {
     <div class="field"><span>${f.custom ? '自訂評估時間' : '時段（不受「最晚需提前」限制）'}</span>${slotsHTML}${st && f.date ? `<p class="custom-toggle">${toggle}</p>` : ''}</div>
     <div class="g2">
       <label class="field"><span>孩子姓名<b class="req">*</b></span><input type="text" id="bf-name" maxlength="40" value="${esc(f.name || '')}"></label>
-      <div class="field"><span>第幾次評估<b class="req">*</b></span><div class="seg">${[1, 2, 3].map(n => `<label><input type="radio" name="bf-round" id="bf-round-${n}" value="${n}" ${Number(f.round) === n ? 'checked' : ''}><span>第${n}次</span></label>`).join('')}</div></div>
+      <div class="field"><span>第幾次評估<b class="req">*</b></span><div class="seg">${[1, 2, 3].map(n => `<label><input type="radio" name="bf-round" id="bf-round-${n}" value="${n}" ${Number(f.round) === n ? 'checked' : ''} ${fit.includes(n) ? '' : 'disabled'}><span>第${n}次</span></label>`).join('')}</div></div>
     </div>
     <div class="g2">
       <label class="field"><span>聯絡電話<b class="req">*</b></span><input type="tel" id="bf-phone" maxlength="20" value="${esc(f.phone || '')}"></label>
@@ -567,6 +573,10 @@ function bkFormHTML() {
     <p class="err" id="bf-err" role="alert">${esc(f.err || '')}</p>
     <div class="acts" style="justify-content:flex-start"><button type="submit" class="btn primary" id="bf-save">${f.id ? '儲存修改' : '新增預約'}</button><button type="button" class="btn ghost" data-act="bf-close">取消</button></div>
   </form>`;
+}
+/** 後台：這個起點排得下第幾次評估 */
+function adminRounds(st, date, start, excludeId) {
+  return [1, 2, 3].filter(n => adminChoices(st, date, excludeId, U.durOf(st, n)).some(x => x.start === start && x.ok));
 }
 function readBkForm() {
   const f = S.bkForm; if (!f || !$('bf-name')) return;
@@ -590,8 +600,10 @@ async function saveBkForm() {
     if (bad) return fail(bad);
     sl = { start: cs, end: ce };
   } else {
-    sl = adminChoices(st, f.date, f.id).find(x => x.start === f.start);
-    if (f.start == null || !sl) return fail('請選擇時段');
+    if (f.start == null || !adminChoices(st, f.date, f.id).some(x => x.start === f.start)) return fail('請選擇時段');
+    if (!(f.round >= 1 && f.round <= 3)) return fail('請選擇第幾次評估');
+    sl = adminChoices(st, f.date, f.id, U.durOf(st, f.round)).find(x => x.start === f.start);
+    if (!sl) return fail(`這個時段排不下第${f.round}次評估（${U.durOf(st, f.round)} 分鐘），請選擇其他時段，或改用自訂時間`);
     if (!sl.ok) return fail('這個時段已經被預約或已經過了，請選擇其他時段');
   }
   if (!name) return fail('請填寫孩子姓名');
@@ -786,17 +798,22 @@ document.addEventListener('click', async e => {
       {
         // 不在固定時段上的預約（之前用自訂時間建立的），直接用自訂時間編輯
         const st0 = aStaff().find(s => s.id === bk.staffId);
-        const onGrid = st0 && U.daySlots(st0, U.parseD(bk.date).getDay()).some(x => x.start === bk.start && x.end === bk.end);
+        const onGrid = st0 && bk.end - bk.start === U.durOf(st0, bk.round) && adminChoices(st0, bk.date, bk.id, bk.end - bk.start).some(x => x.start === bk.start);
         if (!onGrid) Object.assign(S.bkForm, { custom: true, cs: fmt(bk.start), ce: fmt(bk.end) });
       }
       renderBookings(); $('bk-form').scrollIntoView({ block: 'center', behavior: 'smooth' }); break;
     }
-    case 'bf-slot': readBkForm(); S.bkForm.start = Number(b.dataset.s); S.bkForm.err = ''; renderBookings(); break;
+    case 'bf-slot': {
+      readBkForm(); const f = S.bkForm, st = aStaff().find(s => s.id === f.staffId);
+      f.start = Number(b.dataset.s); f.err = '';
+      if (st && f.round && !adminRounds(st, f.date, f.start, f.id).includes(Number(f.round))) f.round = 0;
+      renderBookings(); break;
+    }
     case 'bf-close': S.bkForm = null; renderBookings(); break;
     case 'bf-custom': {
       readBkForm(); const f = S.bkForm; f.custom = !f.custom; f.err = '';
       if (f.custom && !f.cs) {
-        const st = aStaff().find(s => s.id === f.staffId), dur = st ? U.num(st.duration, 60) : 60;
+        const st = aStaff().find(s => s.id === f.staffId), dur = st ? U.durOf(st, f.round || 2) : 60;
         if (f.start != null) { f.cs = fmt(f.start); f.ce = fmt(Math.min(f.start + dur, 1439)); }
       }
       renderBookings(); break;
@@ -837,7 +854,6 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'ed-close': S.editingId = null; S.draft = null; S.confirm = null; renderStaffList(); renderEditor(); break;
-    case 'ed-dur': readEditor(); S.draft.duration = Number(b.dataset.v); $('f-dur').value = b.dataset.v; updatePreview(); break;
     case 'ed-add-range': {
       readEditor(); const rs = S.draft.weekly[b.dataset.day], last = rs[rs.length - 1];
       const s = last && !isNaN(toMin(last.e)) ? Math.min(toMin(last.e) + 60, 22 * 60) : 9 * 60;

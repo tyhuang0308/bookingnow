@@ -525,3 +525,12 @@ select{-webkit-appearance:none;appearance:none;height:42px;padding-right:36px;li
   *,*::before,*::after{transition:none!important;animation:none!important}
   .staff-card,.day,.slot,.btn,.arrow{transform:none!important}
 }
+
+/* ---------- 第一次評估比較短：時段下方標示「限第1次」；排不下的評估次數不能選 ---------- */
+.slot.has-lim{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;height:48px;border-radius:18px}
+.slot .lim{font:400 .625rem/1 var(--f-sans);letter-spacing:.02em;color:var(--muted)}
+.slot[aria-pressed="true"] .lim{color:rgba(255,255,255,.75)}
+.seg input:disabled{cursor:not-allowed}
+.seg input:disabled + span{background:transparent;box-shadow:0 0 0 1px var(--line);color:var(--faint);cursor:not-allowed}
+.seg label:hover input:disabled + span{box-shadow:0 0 0 1px var(--line)}
+.slots:has(.has-lim) .slot{height:48px}

@@ -533,4 +533,5 @@ select{-webkit-appearance:none;appearance:none;height:42px;padding-right:36px;li
 .seg input:disabled{cursor:not-allowed}
 .seg input:disabled + span{background:transparent;box-shadow:0 0 0 1px var(--line);color:var(--faint);cursor:not-allowed}
 .seg label:hover input:disabled + span{box-shadow:0 0 0 1px var(--line)}
-.slots:has(.has-lim) .slot{height:48px}
+.slots:has(.has-lim) .slot{height:48px}/* 受試者預約進度：右上角「截圖」與關閉 */
+.pp-tools{display:flex;align-items:center;gap:6px;flex:none}

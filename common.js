@@ -40,6 +40,9 @@ U.durOf = function (st, round) {
   return Number(round) === 1 ? Math.max(5, U.num(st && st.duration1, d2)) : d2;
 };
 U.minDur = st => Math.min(U.durOf(st, 1), U.durOf(st, 2));
+/** 第幾次評估：1–3 為第1～3次；4 為「加評」（只能從後台建立，時長和第二、三次一樣） */
+U.EXTRA = 4;
+U.roundLabel = r => Number(r) === U.EXTRA ? '加評' : (Number(r) ? '第' + Number(r) + '次' : '');
 const gcd = (a, b) => b ? gcd(b, a % b) : a;
 /** 可預約時段的間距：兩種「時長＋間隔」的最大公因數（例如 45＋15 和 75＋15 → 每 30 分鐘一個起點） */
 U.stepOf = function (st) {

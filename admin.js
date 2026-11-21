@@ -285,7 +285,7 @@ function renderBookings() {
     cal += `<button type="button" class="${cls}" data-act="bk-day" data-d="${d}" aria-pressed="${d === S.bkDay}" aria-label="${dLabel(d)}，${list.length} 筆預約">
       <span class="bkc-top"><span class="bkc-n">${i}</span>${list.length ? `<span class="bkc-count">${list.length}</span>` : ''}</span>
       <span class="bkc-items">${list.slice(0, 3).map(b => { const a = asOf(b), who = a && a.need && a.helper ? esc(asName(a)) + '負責' : '';
-        return `<span class="bkc-item${who ? ' has-who' : ''}"><span class="dot" style="background:${sColor(b.staffId)}"></span><span class="bkc-txt"><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}${b.round || ''}${who ? ` · <span class="as-who">${who}</span>` : ''}</span></span>`; }).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 筆</span>` : ''}${ex ? '<span class="bkc-more">已加開場地</span>' : ''}${(() => { const n = d >= t && S.data.assists ? list.filter(asOpen).length : 0; return n ? `<span class="bkc-more as-miss">暑研等待回覆 ${n}</span>` : ''; })()}</span>
+        return `<span class="bkc-item${who ? ' has-who' : ''}"><span class="dot" style="background:${sColor(b.staffId)}"></span><span class="bkc-txt"><span class="mono">${fmt(b.start)}</span> ${esc(b.name)}${Number(b.round) === U.EXTRA ? ' 加評' : (b.round || '')}${who ? ` · <span class="as-who">${who}</span>` : ''}</span></span>`; }).join('')}${list.length > 3 ? `<span class="bkc-more">還有 ${list.length - 3} 筆</span>` : ''}${ex ? '<span class="bkc-more">已加開場地</span>' : ''}${(() => { const n = d >= t && S.data.assists ? list.filter(asOpen).length : 0; return n ? `<span class="bkc-more as-miss">暑研等待回覆 ${n}</span>` : ''; })()}</span>
     </button>`;
   }
 
@@ -308,7 +308,7 @@ function renderBookings() {
         : `<button type="button" class="btn ghost small" data-act="reopen" data-d="${day}" data-s="${b.start}" data-e="${b.end}">重新開放此時段</button>`);
       const sel = S.person && S.person.id === b.id ? ' class="is-sel"' : '';
       detail += `<tr data-act="person" data-id="${esc(b.id)}"${sel}><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
-        <td><button type="button" class="pname" data-act="person" data-id="${esc(b.id)}" title="查看這位受試者的所有預約">${esc(b.name)}</button>${b.round ? `<span class="tag">第${b.round}次</span>` : ''}${b.createdBy ? '<span class="tag">後台代約</span>' : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
+        <td><button type="button" class="pname" data-act="person" data-id="${esc(b.id)}" title="查看這位受試者的所有預約">${esc(b.name)}</button>${b.round ? `<span class="tag">${U.roundLabel(b.round)}</span>` : ''}${b.createdBy ? '<span class="tag">後台代約</span>' : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
         <td><div class="nt mono">${esc(b.code || '')}</div>${sync}${asTag(b) ? `<div class="as-row">${asTag(b)}</div>` : ''}</td>
         <td class="ac">${S.confirm === k
           ? `<span class="confirm">取消這筆？<button type="button" class="btn danger small" data-act="bk-cancel" data-id="${esc(b.id)}">確定取消</button><button type="button" class="btn ghost small" data-act="confirm-no">保留</button></span>`
@@ -370,7 +370,7 @@ function ppState(b) {
 function ppItem(b, p, showWho) {
   const st = aStaff().find(s => s.id === b.staffId), stt = ppState(b);
   const as = asOf(b), asTxt = as && as.need && b.status === 'booked' ? (as.helper ? esc(asName(as)) + '負責' : '暑研等待回覆') : '';
-  const meta = [esc(st ? st.name : b.staffName), b.round ? `第${esc(b.round)}次` : '', asTxt, showWho ? esc(b.name) + ' · ' + esc(b.phone) : ''].filter(Boolean).join(' · ');
+  const meta = [esc(st ? st.name : b.staffName), U.roundLabel(b.round), asTxt, showWho ? esc(b.name) + ' · ' + esc(b.phone) : ''].filter(Boolean).join(' · ');
   const inner = `<span class="dot" style="background:${color(st && st.color)}"></span><span class="pp-when">${ppDate(b.date)} ${fmt(b.start)}–${fmt(b.end)}</span><span class="pill ${stt.cls}">${stt.txt}</span><span class="pp-meta">${meta}</span>`;
   const cls = `pp-item${b.id === p.id ? ' is-cur' : ''}${b.status !== 'booked' ? ' is-off' : ''}`;
   // 月曆有載入的日期才能點過去（後台只載入兩個月前起的紀錄）
@@ -392,6 +392,7 @@ function renderPerson() {
   // 已取消的預約不列出
   const all = Object.values(m).filter(b => b && b.date && b.status === 'booked');
   const mine = all.filter(b => personRel(b, p) === 'same').sort(byTime);
+  p.mine = mine; // 截圖用
   const maybe = all.filter(b => personRel(b, p) === 'maybe').sort(byTime);
   const t = today();
   // 每一次評估採用的那筆預約：有未來的預約就用最近的一筆，否則用最後一次已結束的
@@ -417,11 +418,73 @@ function renderPerson() {
   const note = p.loading ? '正在查詢更早的預約紀錄…'
     : p.err ? `無法查詢兩個月前的紀錄（${esc(p.err)}），目前只列出最近兩個月起的預約` : '';
   el.innerHTML = `<div class="pp-in"><div class="pp-body"><div class="pp-head"><div><p class="pp-k">受試者預約進度</p><h3 id="pp-title">${esc(p.name)}</h3><p class="hint">${esc(p.phone)}${p.email ? ' · ' + esc(p.email) : ''}</p></div>
-      <button type="button" class="icon pp-x" data-act="pp-close" aria-label="關閉">×</button></div>
+      <span class="pp-tools"><button type="button" class="btn ghost small" data-act="pp-shot" ${mine.length ? '' : 'disabled'}>截圖</button><button type="button" class="icon pp-x" data-act="pp-close" aria-label="關閉">×</button></span></div>
     <ol class="pp-steps" aria-label="評估進度">${steps}</ol>
     <div class="pp-sec">${mine.map(b => ppItem(b, p, false)).join('') || '<p class="hint">找不到這位受試者的預約</p>'}</div>
     ${maybe.length ? `<div class="pp-sec"><h4>可能相關（只有姓名或電話相同）</h4><p class="pp-note">可能是兄弟姊妹，或預約時姓名、電話填寫不一致</p>${maybe.map(b => ppItem(b, p, true)).join('')}</div>` : ''}
     ${note ? `<p class="pp-note">${note}</p>` : ''}</div></div>`;
+}
+
+/* ---------- 受試者預約截圖：把這個孩子目前已預約的所有時段畫成一張圖，傳給家長確認 ---------- */
+function ppCanvas(p) {
+  const list = (p.mine || []).slice(), t = today();
+  const W = 720, PAD = 48, ROW = 76, HEAD = 196, FOOT = 104, S2 = 2;
+  const H = HEAD + Math.max(1, list.length) * ROW + FOOT;
+  const cv = document.createElement('canvas'); cv.width = W * S2; cv.height = H * S2;
+  const c = cv.getContext('2d'); c.scale(S2, S2);
+  const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif';
+  const font = (w, px) => { c.font = `${w} ${px}px ${FONT}`; };
+  c.fillStyle = '#F4F3F1'; c.fillRect(0, 0, W, H);
+  // 白色卡片
+  const rr = (x, y, w, h, r) => { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); };
+  c.fillStyle = '#FFFFFF'; rr(20, 20, W - 40, H - 40, 28); c.fill();
+  c.textBaseline = 'alphabetic';
+  font(400, 15); c.fillStyle = '#6B6B6E'; c.fillText('成大兒童敘事研究　預約確認', PAD, 74);
+  font(500, 30); c.fillStyle = '#1C1C1E'; c.fillText(p.name || '', PAD, 120);
+  font(400, 15); c.fillStyle = '#6B6B6E'; c.fillText(`目前已預約 ${list.length} 次評估`, PAD, 152);
+  c.fillStyle = '#E6E5E2'; c.fillRect(PAD, HEAD - 16, W - PAD * 2, 1);
+  list.forEach((b, i) => {
+    const y = HEAD + i * ROW, done = b.date < t, st = aStaff().find(s => s.id === b.staffId);
+    // 第幾次：小膠囊
+    const lab = U.roundLabel(b.round) || '評估';
+    font(500, 15); const lw = c.measureText(lab).width + 24;
+    c.fillStyle = done ? '#F6F5F3' : '#1C1C1E'; rr(PAD, y + 8, lw, 30, 15); c.fill();
+    c.fillStyle = done ? '#6B6B6E' : '#FFFFFF'; c.fillText(lab, PAD + 12, y + 29);
+    const x = PAD + Math.max(lw, 86) + 18;
+    font(500, 20); c.fillStyle = done ? '#B4B3B0' : '#1C1C1E';
+    c.fillText(`${ppDate(b.date)}　${fmt(b.start)}–${fmt(b.end)}`, x, y + 30);
+    font(400, 14); c.fillStyle = '#6B6B6E';
+    c.fillText([st ? st.name : b.staffName, done ? '已完成' : ''].filter(Boolean).join('　·　'), x, y + 56);
+    if (i < list.length - 1) { c.fillStyle = '#EFEEEB'; c.fillRect(x, y + ROW - 6, W - PAD - x, 1); }
+  });
+  if (!list.length) { font(400, 16); c.fillStyle = '#6B6B6E'; c.fillText('目前沒有預約', PAD, HEAD + 30); }
+  const fy = H - FOOT + 24;
+  c.fillStyle = '#E6E5E2'; c.fillRect(PAD, fy - 12, W - PAD * 2, 1);
+  font(400, 13); c.fillStyle = '#6B6B6E';
+  c.fillText('如需修改或取消，可至預約網站用「孩子姓名＋電話」查詢，', PAD, fy + 16);
+  c.fillText('或在 LINE 官方帳號告訴我們，謝謝！', PAD, fy + 38);
+  return cv;
+}
+async function ppShot(btn) {
+  const p = S.person; if (!p || !(p.mine || []).length) return;
+  btn.disabled = true;
+  try {
+    if (document.fonts && document.fonts.load) await Promise.all([document.fonts.load('400 16px "Noto Sans TC"'), document.fonts.load('500 16px "Noto Sans TC"')]).catch(() => {});
+    const blob = await new Promise(r => ppCanvas(p).toBlob(r, 'image/png'));
+    const name = `預約確認-${(p.name || '').replace(/[\\/:*?"<>|\s]/g, '')}-${today()}.png`;
+    const file = new File([blob], name, { type: 'image/png' });
+    // 手機：直接開啟分享（可以選 LINE）；電腦：下載圖片，並複製到剪貼簿，可以直接貼到 LINE
+    if (window.matchMedia('(pointer:coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file] }).catch(() => {});
+      return;
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    let copied = false;
+    try { if (navigator.clipboard && window.ClipboardItem) { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); copied = true; } } catch (e) { /* 瀏覽器不支援複製圖片 */ }
+    U.toast(copied ? '已下載圖片，也已複製，可以直接貼到 LINE' : '已下載圖片');
+  } catch (e) { U.toast('截圖沒有成功，請再試一次'); }
+  finally { btn.disabled = false; }
 }
 
 /* ---------- 暑研：學弟妹協助評估 ----------
@@ -500,7 +563,7 @@ function renderSummer() {
           : `<button type="button" class="btn ghost small" data-act="ask" data-k="${esc(k)}">時間無法配合</button>`;
       }
       detail += `<tr><td class="tm">${fmt(b.start)}–${fmt(b.end)}</td><td class="st"><span class="dot" style="background:${color(st && st.color)}"></span> ${esc(st ? st.name : b.staffName)}</td>
-        <td><b>${esc(b.name)}</b>${b.round ? `<span class="tag">第${b.round}次</span>` : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
+        <td><b>${esc(b.name)}</b>${b.round ? `<span class="tag">${U.roundLabel(b.round)}</span>` : ''}<div class="nt">${esc(b.phone)}${b.email ? '<br>' + esc(b.email) : ''}</div></td>
         <td><div class="as-row">${asTag(b)}</div></td>
         <td class="ac"><span class="acts">${acts}</span></td></tr>`;
     }
@@ -552,9 +615,9 @@ function bkFormHTML() {
           <label class="field"><span>結束</span><input type="time" id="bf-ce" step="300" value="${esc(f.ce || '')}"></label></div>
         <p class="hint">自訂時間不受「每週開放時段」與休假限制，但不能和其他預約或共用場地衝突</p>`
     : (!list.length ? '<p class="hint">這一天沒有可預約的固定時段，可以改用自訂時間</p>'
-      : '<div class="slots">' + list.map(x => { const r = x.ok ? adminRounds(st, f.date, x.start, f.id) : [1, 2, 3], lim = r.length < 3 ? '限第' + r.join('、') + '次' : '';
+      : '<div class="slots">' + list.map(x => { const r = x.ok ? adminRounds(st, f.date, x.start, f.id) : ROUNDS, lim = r.length < ROUNDS.length ? '限' + r.map(U.roundLabel).join('、') : '';
           return `<button type="button" class="slot${lim ? ' has-lim' : ''}" data-act="bf-slot" data-s="${x.start}" ${x.ok ? '' : 'disabled'} aria-pressed="${x.start === f.start}">${fmt(x.start)}${lim ? `<span class="lim">${lim}</span>` : ''}</button>`; }).join('') + '</div>');
-  const fit = !f.custom && st && f.date && f.start != null ? adminRounds(st, f.date, f.start, f.id) : [1, 2, 3];
+  const fit = !f.custom && st && f.date && f.start != null ? adminRounds(st, f.date, f.start, f.id) : ROUNDS;
   return `<form id="bk-form" class="bk-form" novalidate>
     <h4>${f.id ? '修改預約' : '新增預約（後台代約）'}</h4>
     <div class="g2">
@@ -564,7 +627,7 @@ function bkFormHTML() {
     <div class="field"><span>${f.custom ? '自訂評估時間' : '時段（不受「最晚需提前」限制）'}</span>${slotsHTML}${st && f.date ? `<p class="custom-toggle">${toggle}</p>` : ''}</div>
     <div class="g2">
       <label class="field"><span>孩子姓名<b class="req">*</b></span><input type="text" id="bf-name" maxlength="40" value="${esc(f.name || '')}"></label>
-      <div class="field"><span>第幾次評估<b class="req">*</b></span><div class="seg">${[1, 2, 3].map(n => `<label><input type="radio" name="bf-round" id="bf-round-${n}" value="${n}" ${Number(f.round) === n ? 'checked' : ''} ${fit.includes(n) ? '' : 'disabled'}><span>第${n}次</span></label>`).join('')}</div></div>
+      <div class="field"><span>第幾次評估<b class="req">*</b></span><div class="seg">${ROUNDS.map(n => `<label><input type="radio" name="bf-round" id="bf-round-${n}" value="${n}" ${Number(f.round) === n ? 'checked' : ''} ${fit.includes(n) ? '' : 'disabled'}><span>${U.roundLabel(n)}</span></label>`).join('')}</div></div>
     </div>
     <div class="g2">
       <label class="field"><span>聯絡電話<b class="req">*</b></span><input type="tel" id="bf-phone" maxlength="20" value="${esc(f.phone || '')}"></label>
@@ -574,9 +637,11 @@ function bkFormHTML() {
     <div class="acts" style="justify-content:flex-start"><button type="submit" class="btn primary" id="bf-save">${f.id ? '儲存修改' : '新增預約'}</button><button type="button" class="btn ghost" data-act="bf-close">取消</button></div>
   </form>`;
 }
+/** 後台可選的評估次數：第1～3次＋加評 */
+const ROUNDS = [1, 2, 3, U.EXTRA];
 /** 後台：這個起點排得下第幾次評估 */
 function adminRounds(st, date, start, excludeId) {
-  return [1, 2, 3].filter(n => adminChoices(st, date, excludeId, U.durOf(st, n)).some(x => x.start === start && x.ok));
+  return ROUNDS.filter(n => adminChoices(st, date, excludeId, U.durOf(st, n)).some(x => x.start === start && x.ok));
 }
 function readBkForm() {
   const f = S.bkForm; if (!f || !$('bf-name')) return;
@@ -601,13 +666,13 @@ async function saveBkForm() {
     sl = { start: cs, end: ce };
   } else {
     if (f.start == null || !adminChoices(st, f.date, f.id).some(x => x.start === f.start)) return fail('請選擇時段');
-    if (!(f.round >= 1 && f.round <= 3)) return fail('請選擇第幾次評估');
+    if (!ROUNDS.includes(Number(f.round))) return fail('請選擇第幾次評估');
     sl = adminChoices(st, f.date, f.id, U.durOf(st, f.round)).find(x => x.start === f.start);
-    if (!sl) return fail(`這個時段排不下第${f.round}次評估（${U.durOf(st, f.round)} 分鐘），請選擇其他時段，或改用自訂時間`);
+    if (!sl) return fail(`這個時段排不下${U.roundLabel(f.round)}評估（${U.durOf(st, f.round)} 分鐘），請選擇其他時段，或改用自訂時間`);
     if (!sl.ok) return fail('這個時段已經被預約或已經過了，請選擇其他時段');
   }
   if (!name) return fail('請填寫孩子姓名');
-  if (!(f.round >= 1 && f.round <= 3)) return fail('請選擇第幾次評估');
+  if (!ROUNDS.includes(Number(f.round))) return fail('請選擇第幾次評估');
   if (!/^[0-9+()#-]{6,20}$/.test(phone)) return fail('請填寫正確的聯絡電話');
   if (email && !/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(email)) return fail('Email格式不正確，不需要可以留空');
   const btn = $('bf-save'); btn.disabled = true; btn.textContent = '儲存中…'; f.err = '';
@@ -637,7 +702,7 @@ function exportCSV() {
   const list = (S.data.bookings || []).slice().sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   const head = ['日期', '開始', '結束', '研究人員', '孩子姓名', '第幾次評估', '電話', 'Email', '備註', '狀態', '預約代碼', '建立方式', '暑研', '負責的學弟妹'];
-  const lines = [head.map(q).join(',')].concat(list.map(b => { const a = asOf(b) || {}; return [b.date, fmt(b.start), fmt(b.end), b.staffName, b.name, b.round || '', b.phone, b.email, b.note, b.status === 'booked' ? '已預約' : '已取消', b.code, b.createdBy ? '後台代約' : '家長預約', a.need ? '是' : '', a.need && a.helper ? asName(a) : ''].map(q).join(','); }));
+  const lines = [head.map(q).join(',')].concat(list.map(b => { const a = asOf(b) || {}; return [b.date, fmt(b.start), fmt(b.end), b.staffName, b.name, Number(b.round) === U.EXTRA ? '加評' : (b.round || ''), b.phone, b.email, b.note, b.status === 'booked' ? '已預約' : '已取消', b.code, b.createdBy ? '後台代約' : '家長預約', a.need ? '是' : '', a.need && a.helper ? asName(a) : ''].map(q).join(','); }));
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = '預約紀錄-' + today() + '.csv';
@@ -773,6 +838,7 @@ document.addEventListener('click', async e => {
     case 'sm-go': S.smDay = b.dataset.d; S.smMonth = b.dataset.d.slice(0, 7); S.confirm = null; renderSummer(); break;
     case 'person': openPerson(b.dataset.id); break;
     case 'pp-close': closePerson(); break;
+    case 'pp-shot': ppShot(b); break;
     case 'pp-go': {
       const d = b.dataset.d, id = b.dataset.id;
       if (S.bkForm) readBkForm();

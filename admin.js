@@ -418,7 +418,7 @@ function renderPerson() {
   const note = p.loading ? '正在查詢更早的預約紀錄…'
     : p.err ? `無法查詢兩個月前的紀錄（${esc(p.err)}），目前只列出最近兩個月起的預約` : '';
   el.innerHTML = `<div class="pp-in"><div class="pp-body"><div class="pp-head"><div><p class="pp-k">受試者預約進度</p><h3 id="pp-title">${esc(p.name)}</h3><p class="hint">${esc(p.phone)}${p.email ? ' · ' + esc(p.email) : ''}</p></div>
-      <span class="pp-tools"><button type="button" class="btn ghost small" data-act="pp-shot" ${mine.length ? '' : 'disabled'}>截圖</button><button type="button" class="icon pp-x" data-act="pp-close" aria-label="關閉">×</button></span></div>
+      <span class="pp-tools"><button type="button" class="icon pp-shot" data-act="pp-shot" ${mine.length ? '' : 'disabled'} aria-label="截圖" title="截圖"><svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M13 3h2a2 2 0 0 1 2 2v2M17 13v2a2 2 0 0 1-2 2h-2M7 17H5a2 2 0 0 1-2-2v-2"/><circle cx="10" cy="10" r="2.6"/></svg></button><button type="button" class="icon pp-x" data-act="pp-close" aria-label="關閉">×</button></span></div>
     <ol class="pp-steps" aria-label="評估進度">${steps}</ol>
     <div class="pp-sec">${mine.map(b => ppItem(b, p, false)).join('') || '<p class="hint">找不到這位受試者的預約</p>'}</div>
     ${maybe.length ? `<div class="pp-sec"><h4>可能相關（只有姓名或電話相同）</h4><p class="pp-note">可能是兄弟姊妹，或預約時姓名、電話填寫不一致</p>${maybe.map(b => ppItem(b, p, true)).join('')}</div>` : ''}
@@ -462,29 +462,53 @@ function ppCanvas(p) {
   c.fillStyle = '#E6E5E2'; c.fillRect(PAD, fy - 12, W - PAD * 2, 1);
   font(400, 13); c.fillStyle = '#6B6B6E';
   c.fillText('如需修改或取消，可至預約網站用「孩子姓名＋電話」查詢，', PAD, fy + 16);
-  c.fillText('或在 LINE 官方帳號告訴我們，謝謝！', PAD, fy + 38);
+  c.fillText('或在Line官方帳號告訴我們，謝謝！', PAD, fy + 38);
   return cv;
 }
+/** 截圖：先跳出預覽視窗（像 Mac 截圖一樣），再自己決定要複製、儲存或分享 */
+let shot = null;
 async function ppShot(btn) {
   const p = S.person; if (!p || !(p.mine || []).length) return;
   btn.disabled = true;
   try {
     if (document.fonts && document.fonts.load) await Promise.all([document.fonts.load('400 16px "Noto Sans TC"'), document.fonts.load('500 16px "Noto Sans TC"')]).catch(() => {});
     const blob = await new Promise(r => ppCanvas(p).toBlob(r, 'image/png'));
-    const name = `預約確認-${(p.name || '').replace(/[\\/:*?"<>|\s]/g, '')}-${today()}.png`;
-    const file = new File([blob], name, { type: 'image/png' });
-    // 手機：直接開啟分享（可以選 LINE）；電腦：下載圖片，並複製到剪貼簿，可以直接貼到 LINE
-    if (window.matchMedia('(pointer:coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file] }).catch(() => {});
-      return;
-    }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    let copied = false;
-    try { if (navigator.clipboard && window.ClipboardItem) { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); copied = true; } } catch (e) { /* 瀏覽器不支援複製圖片 */ }
-    U.toast(copied ? '已下載圖片，也已複製，可以直接貼到 LINE' : '已下載圖片');
+    closeShot();
+    shot = { blob, url: URL.createObjectURL(blob), name: `預約確認-${(p.name || '').replace(/[\\/:*?"<>|\s]/g, '')}-${today()}.png` };
+    const file = new File([blob], shot.name, { type: 'image/png' });
+    const canCopy = !!(navigator.clipboard && window.ClipboardItem);
+    const canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+    shot.file = file;
+    const ov = document.createElement('div');
+    ov.className = 'shot-ov'; ov.id = 'shot-ov';
+    ov.innerHTML = `<div class="shot-box" role="dialog" aria-label="截圖預覽">
+      <img src="${shot.url}" alt="${esc(p.name)} 的預約確認截圖">
+      <div class="shot-acts">
+        ${canCopy ? '<button type="button" class="btn primary small" data-act="shot-copy">複製</button>' : ''}
+        <button type="button" class="btn ghost small" data-act="shot-save">儲存</button>
+        ${canShare ? '<button type="button" class="btn ghost small" data-act="shot-share">分享</button>' : ''}
+        <span class="sp"></span>
+        <button type="button" class="btn ghost small" data-act="shot-close">關閉</button>
+      </div></div>`;
+    document.body.appendChild(ov);
   } catch (e) { U.toast('截圖沒有成功，請再試一次'); }
   finally { btn.disabled = false; }
+}
+function closeShot() {
+  const ov = $('shot-ov'); if (ov) ov.remove();
+  if (shot) { URL.revokeObjectURL(shot.url); shot = null; }
+}
+async function shotAction(act) {
+  if (!shot) return;
+  if (act === 'shot-copy') {
+    try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': shot.blob })]); U.toast('已複製，可以直接貼到 Line'); }
+    catch (e) { U.toast('這個瀏覽器無法複製圖片，請改用「儲存」'); }
+  } else if (act === 'shot-save') {
+    const a = document.createElement('a'); a.href = shot.url; a.download = shot.name;
+    document.body.appendChild(a); a.click(); a.remove();
+  } else if (act === 'shot-share') {
+    await navigator.share({ files: [shot.file] }).catch(() => {});
+  }
 }
 
 /* ---------- 暑研：學弟妹協助評估 ----------
@@ -839,6 +863,8 @@ document.addEventListener('click', async e => {
     case 'person': openPerson(b.dataset.id); break;
     case 'pp-close': closePerson(); break;
     case 'pp-shot': ppShot(b); break;
+    case 'shot-copy': case 'shot-save': case 'shot-share': shotAction(b.dataset.act); break;
+    case 'shot-close': closeShot(); break;
     case 'pp-go': {
       const d = b.dataset.d, id = b.dataset.id;
       if (S.bkForm) readBkForm();
@@ -950,7 +976,9 @@ document.addEventListener('click', async e => {
       renderStaffList(); renderEditor(); break;
   }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.person) closePerson(); });
+document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; if ($('shot-ov')) closeShot(); else if (S.person) closePerson(); });
+// 點截圖預覽外面的暗色區域也可以關閉
+document.addEventListener('click', e => { if (e.target && e.target.id === 'shot-ov') closeShot(); });
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.classList && t.classList.contains('day-on')) { readEditor(); const d = t.dataset.day; if (t.checked && !S.draft.weekly[d].length) S.draft.weekly[d] = [{ s: '09:00', e: '12:00' }]; renderEditor(); return; }
